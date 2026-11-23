@@ -1,0 +1,1136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>실시간 타점 분석기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+/* 색·글꼴은 관심종목 스캐너 명세(2장)를 따른다. 상승·매수=빨강, 하락·매도=파랑 */
+:root{--bg:#0f1117;--panel:#171a23;--line:#2a2e3a;--row:#20242f;--hover:#1d2130;--track:#262a36;
+--fg:#e6e8ee;--muted:#9aa0ac;--dim:#6b7180;--accent:#f5c518;
+--up:#ef4444;--upw:#f87171;--upbg:rgba(239,68,68,.15);--upbgw:rgba(239,68,68,.08);
+--dn:#3b82f6;--dnw:#60a5fa;--dnbg:rgba(59,130,246,.15);--dnbgw:rgba(59,130,246,.08);
+--neubg:rgba(154,160,172,.1);--live:#34d399;--watch:#eab308;--near:#f97316;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 Pretendard,'Malgun Gothic',-apple-system,sans-serif}
+.num{font-variant-numeric:tabular-nums}
+header{height:56px;padding:0 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0;white-space:nowrap}
+.bt{font-size:14px;font-weight:800;color:var(--accent);border:1px solid rgba(245,197,24,.45);background:rgba(245,197,24,.08);border-radius:8px;padding:3px 10px;white-space:nowrap;cursor:help}
+.sp{flex:1}
+.live{display:flex;align-items:center;gap:6px;color:var(--muted);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}.dot.on{background:var(--live);box-shadow:0 0 6px var(--live)}
+.banner{margin:12px 20px 0;padding:9px 12px;border-radius:8px;border:1px solid;font-size:12.5px}
+.banner.ok{color:#a7f3d0;border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.08)}
+.banner.demo{color:#fde68a;border-color:rgba(234,179,8,.4);background:rgba(234,179,8,.08)}
+.banner.err{color:#fecaca;border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.1)}
+.banner.wait{color:var(--muted);border-color:var(--line);background:var(--panel)}
+main{display:flex;flex-wrap:wrap;gap:16px;padding:16px 20px}
+.colL{flex:1 1 420px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.colR{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
+.card h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.card h2 .cnt{color:var(--accent);font-weight:700}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+input,select,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 9px}
+input[type=number]{width:64px}
+button{cursor:pointer}button:hover{border-color:#4a5060}
+.btn-accent{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:700}
+label.f{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse}
+th{font-size:11.5px;color:var(--muted);font-weight:500;text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:8px;border-bottom:1px solid var(--row);text-align:right;white-space:nowrap}
+tbody tr{cursor:pointer}tbody tr:hover,tbody tr.sel{background:var(--hover)}
+.code{color:var(--dim);font-size:11px;margin-left:4px}
+.up{color:var(--up)}.dn{color:var(--dn)}.mut{color:var(--muted)}.dim{color:var(--dim)}
+.bar{height:6px;background:var(--track);border-radius:3px;overflow:hidden;margin-top:3px;width:64px;margin-left:auto}
+.bar i{display:block;height:100%;transition:width .4s}
+.badge{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:6px}
+.b-buy{color:var(--up);background:var(--upbg)}.b-buyw{color:var(--upw);background:var(--upbgw)}
+.b-sell{color:var(--dn);background:var(--dnbg)}.b-sellw{color:var(--dnw);background:var(--dnbgw)}
+.b-neu{color:var(--muted);background:var(--neubg)}
+.x{border:0;background:none;color:var(--dim);padding:0 4px}.x:hover{color:var(--fg)}
+.scroll{overflow-x:auto}
+.dhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:4px}
+.dhead .nm{font-size:17px;font-weight:700}
+.dhead .px{font-size:15px}
+#chart{height:340px}#scoreChart{height:110px;margin-top:6px}
+.chart-msg{color:var(--muted);padding:30px 0;text-align:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:14px}
+.gauge{position:relative;height:12px;border-radius:6px;background:linear-gradient(90deg,#3b82f6,#9aa0ac,#ef4444);margin:8px 0 6px}
+.gauge i{position:absolute;top:-4px;width:3px;height:20px;background:#fff;border-radius:2px;box-shadow:0 0 6px #fff;transition:left .4s}
+.gauge b{position:absolute;top:-3px;width:1px;height:18px;background:rgba(255,255,255,.45)}
+.score{font-size:26px;font-weight:800}
+.stages{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:10px 0}
+.stages div{font-size:11.5px;text-align:center;padding:4px 2px;border-radius:6px;border:1px solid var(--line);color:var(--dim);background:var(--bg)}
+.stages .act{color:var(--fg);border-color:var(--up);background:var(--upbgw)}
+.stages .past{color:var(--upw)}
+.stages .bad{color:var(--dnw);border-color:var(--dn);background:var(--dnbgw)}
+ul.rs{list-style:none;margin:0;padding:0;font-size:12.5px}
+ul.rs li{padding:2px 0;display:flex;gap:8px}
+ul.rs li span:first-child{min-width:32px;text-align:right}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right}
+.pre{border:1px solid rgba(234,179,8,.45);background:rgba(234,179,8,.07);border-radius:8px;padding:8px 10px;margin-top:10px;font-size:12.5px}
+.note{font-size:11px;color:var(--dim);margin-top:8px}
+.log{max-height:360px;overflow:auto}
+.log div{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--row);font-size:12.5px;align-items:baseline}
+.log .t{color:var(--dim);font-size:11px;min-width:56px}
+.empty{color:var(--dim);padding:14px 0;text-align:center}
+.nl{max-height:560px;overflow:auto}
+.nl>div{display:grid;grid-template-columns:28px 46px 1fr;gap:4px 10px;padding:8px 2px;border-bottom:1px solid var(--row);align-items:start}
+.nl .rk{color:var(--dim);text-align:right;font-size:12px;padding-top:1px}
+.nl .im{font-size:12px;font-weight:700;text-align:right}
+.nl .im i{display:block;height:4px;border-radius:2px;margin-top:4px;background:currentColor;opacity:.7}
+.nl .tt{font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.nl .mt{font-size:11px;color:var(--dim);margin-top:2px}
+.nl .tg{display:inline-block;font-size:10.5px;padding:0 5px;border-radius:4px;background:var(--neubg);color:var(--muted);margin-right:4px}
+.nl .tg.mk{color:var(--accent);background:rgba(245,197,24,.1)}
+.mc>div{display:grid;grid-template-columns:minmax(96px,1.1fr) 1fr 1fr 74px;gap:2px 10px;padding:8px 2px;border-bottom:1px solid var(--row);align-items:baseline;font-size:12.5px}
+.mc .nm b{font-size:13px}.mc .nm div,.mc .sub{font-size:11px;color:var(--dim)}
+.mc .ef{text-align:right}
+.mc .hd{color:var(--muted);font-size:11px;border-bottom:1px solid var(--line);padding:4px 2px}
+.mc .why{grid-column:1/-1;font-size:11px;color:var(--dim)}
+#toasts{position:fixed;left:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:9}
+.toast{max-width:360px;background:#232734;border:1px solid #3a3f4d;border-radius:8px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+footer{color:var(--dim);font-size:11px;padding:4px 20px 24px}
+@media (max-width:640px){header{padding:0 16px;gap:8px}header h1{font-size:15px}.banner{margin:12px 16px 0}main{padding:16px}#clock{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <span class="bt num" id="btRate" title="계산 중">성공률 –</span>
+  <h1>실시간 타점 분석기</h1>
+  <span class="mut" id="mkt"></span>
+  <span class="sp"></span>
+  <span class="live"><span class="dot" id="dot"></span><span id="liveTxt">연결 중</span></span>
+  <span class="mut num" id="clock"></span>
+</header>
+<div class="banner wait" id="banner"><span id="bannerTxt">서버 연결 확인 중…</span>
+  <span id="launchBox" hidden> <button id="launchBtn" class="btn-accent">▶ 분석 서버 켜기</button>
+  <span class="note" style="margin-left:6px">반응이 없으면 analyzer 폴더의 install_launcher.bat 을 한 번 실행하세요(최초 1회)</span></span></div>
+
+<main>
+  <div class="colL">
+    <section class="card">
+      <h2>관심종목 <span class="cnt" id="cnt">0</span></h2>
+      <div class="tools">
+        <input id="addSym" placeholder="종목코드 추가 (예: 005930, AAPL)" style="flex:1;min-width:150px">
+        <button id="addBtn">추가</button>
+      </div>
+      <div class="tools">
+        <input id="findSym" placeholder="종목명·코드 검색" style="flex:1;min-width:140px">
+        <select id="mktFilter"><option value="all">전체</option><option value="KRW">국내</option><option value="USD">미국</option></select>
+      </div>
+      <div class="scroll"><table>
+        <thead><tr><th>종목</th><th>현재가</th><th>당일 변동</th><th>타점 점수</th><th>시그널</th><th></th></tr></thead>
+        <tbody id="list"></tbody>
+      </table></div>
+      <div class="note">당일 변동 = 오늘 수집 첫 시세 대비. 점수는 봉이 마감될 때 확정되고, 진행 중인 봉은 잠정치입니다.</div>
+    </section>
+
+    <section class="card">
+      <h2>설정</h2>
+      <div class="tools">
+        <label class="f">봉 단위 <select id="tf"><option value="1">1분</option><option value="3">3분</option><option value="5">5분</option></select></label>
+        <label class="f">매수 기준 <input id="buy" type="number" min="60" max="95"></label>
+        <label class="f">매도 기준 <input id="sell" type="number" min="20" max="55"></label>
+      </div>
+      <div class="tools">
+        <label class="f">목표 % (고정) <input id="target" type="number" min="0.3" max="10" step="0.1"></label>
+        <label class="f">손절 ATR× <input id="stopAtr" type="number" min="0.5" max="4" step="0.1"></label>
+        <label class="f">보유 창(봉) <input id="horizon" type="number" min="6" max="60"></label>
+        <label class="f" title="매수 타점(1차·확인·매수 구간 진입)만 알립니다. 매도 신호는 신호 기록에만 남습니다"><input id="alert" type="checkbox"> 매수 신호 알림</label>
+      </div>
+      <div class="tools">
+        <label class="f">RSI 상한 <input id="rsiMax" type="number" min="50" max="95"></label>
+        <label class="f">VWAP 이격 상한 ATR× <input id="gapMax" type="number" min="0.5" max="5" step="0.1"></label>
+        <label class="f">개장 후 제외(분) <input id="openSkip" type="number" min="0" max="120"></label>
+        <label class="f">기대 변동폭 비율 <input id="expRatio" type="number" min="0.3" max="2" step="0.05"></label>
+        <label class="f" title="같은 시장 관심종목 중 VWAP 위에 있는 종목 비율이 이 값 미만이면 진입하지 않습니다(0 = 끄기)">시장 폭 ≥ % <input id="breadthMin" type="number" min="0" max="90" step="5"></label>
+      </div>
+      <div class="note">최적화 기본값(11/4, 실제 시세 탐색): 3분봉 · 매수 85 · 매도 30 · 목표 +2%(고정) · 손절 ATR×2.5 · 48봉(144분) · RSI 80 · 이격 ATR×2.5 · 개장 15분 · 변동폭 1.25 · 시장 폭 ≥65% — 매수 기준 돌파 후 보유 창 안에 +2% 도달 13건 중 11건(84.6%, 시장 폭 필터 없이는 18건 중 12건), 표본이 작아 추정치입니다. 이전 명세값: 5분봉 · 80 · 45 · ATR×1.2 · 18봉 · RSI 80 · 2.5 · 15분 · 0.8. <button id="cfgOpt" style="font-size:11px;padding:1px 6px">최적화 기본값으로</button></div>
+    </section>
+
+    <section class="card">
+      <h2>성공률 분석 <span class="mut" style="font-weight:400;font-size:12px">80점 돌파 매수 → 당일 종가까지 +2.5%</span></h2>
+      <div class="mut" style="font-size:12px;margin-bottom:4px">손절선 단계별 비교 (선택한 단계가 좌측 상단 성공률과 아래 분석에 쓰입니다)</div>
+      <div class="scroll"><table><thead><tr><th>손절선</th><th>성공률</th><th>성공/판정</th><th>손절</th><th>종가 미달</th><th>진행 중</th><th></th></tr></thead><tbody id="btLadder"></tbody></table></div>
+      <div id="btSummary" class="mut" style="margin-top:10px">계산 중…</div>
+      <div id="btReasons" style="margin-top:8px"></div>
+      <div class="mut" style="font-size:12px;margin:12px 0 4px">실패 원인 진단</div>
+      <ul class="rs" id="btInsights"></ul>
+      <div class="mut" style="font-size:12px;margin:12px 0 4px">개선안 (같은 시세로 다시 모의 매매한 결과)</div>
+      <div class="scroll"><table><thead><tr><th>변경</th><th>성공률</th><th>변화</th><th>거래</th><th></th></tr></thead><tbody id="btWhatIf"></tbody></table></div>
+      <details style="margin-top:10px"><summary class="mut" style="cursor:pointer">최근 실패 거래</summary><div class="log" id="btFails" style="margin-top:6px"></div></details>
+      <div class="note">실패 = 손절선 도달(같은 봉에서 목표와 함께 닿으면 손절로 봄) 또는 당일 종가까지 +2.5% 미달성. 장을 넘겨 보유하지 않습니다. 개선안은 서버에 남아 있는 최근 30시간 시세로 다시 계산한 추정치이니 20건 이상 쌓인 뒤 적용하세요.</div>
+    </section>
+
+    <section class="card">
+      <h2>신호 기록 <span class="cnt" id="logCnt">0</span></h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+
+  <div class="colR">
+    <section class="card">
+      <div class="dhead"><span class="nm" id="dName">—</span><span class="code" id="dCode"></span><span class="px num" id="dPx"></span><span class="sp"></span><span class="mut" id="dBars"></span></div>
+      <div id="chart"></div>
+      <div id="scoreChart"></div>
+      <div class="note">▲ 매수 타점(1차·확인·구간 진입) · ▼ 매도(트리거·무효·구간 진입) · ● 목표 도달 · 선: SMA5(노랑) SMA20(보라) VWAP(초록) 볼린저(회색). 아래는 점수 추이(빨강 점선 매수 기준, 파랑 점선 매도 기준).</div>
+      <div class="grid2">
+        <div>
+          <div class="gauge"><b id="gB"></b><b id="gS"></b><i id="gI" style="left:50%"></i></div>
+          <div style="display:flex;align-items:center;gap:10px"><span class="score num" id="dScore">–</span><span class="badge b-neu" id="dLabel">대기</span></div>
+          <div class="stages" id="stages"></div>
+          <div id="pre"></div>
+          <dl class="kv num" id="risk" style="margin-top:12px"></dl>
+        </div>
+        <div>
+          <div class="mut" style="font-size:12px;margin-bottom:4px">근거</div>
+          <ul class="rs num" id="reasons"></ul>
+          <div id="gates"></div>
+          <dl class="kv num" id="ind" style="margin-top:12px"></dl>
+        </div>
+      </div>
+      <div class="note">점수 기준: 보유 창 안에 목표 % 도달, 그 전에 ATR×손절배수 손절선 미도달 가능성(관심종목 스캐너 명세 signal.js v3 규칙을 시세 틱 기반으로 옮김). 가중치는 검증 전 초기값입니다.</div>
+    </section>
+
+    <section class="card">
+      <h2>주요뉴스 기반 종목 분석 <span class="mut" style="font-weight:400;font-size:12px" id="newsMeta"></span></h2>
+      <div id="newsMarket" class="pre" style="margin:0 0 10px"></div>
+      <div class="scroll"><table>
+        <thead><tr><th>순위</th><th style="text-align:left">종목</th><th>뉴스 점수</th><th style="text-align:left">핵심 뉴스</th><th>실시간 타점</th><th style="text-align:left">종합 판단</th><th></th></tr></thead>
+        <tbody id="newsRank"></tbody>
+      </table></div>
+      <div id="newsSnap"></div>
+      <details style="margin-top:12px"><summary class="mut" style="cursor:pointer">최신 주요뉴스 붙여넣기</summary>
+        <div class="note" style="margin:6px 0">토스증권 → 피드 → 뉴스 → 주요뉴스 화면에서 Ctrl+A, Ctrl+C 로 복사해 아래에 붙여 넣으세요. 여러 페이지를 이어 붙여도 됩니다(중복 제거). "N시간 전"은 붙여 넣은 시각 기준으로 계산합니다.</div>
+        <textarea id="newsInput" rows="6" style="width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px" placeholder="여기에 붙여넣기"></textarea>
+        <div class="tools" style="margin-top:6px"><button class="btn-accent" id="newsApply">분석</button><button id="newsReset">기본(11/3 스냅샷)으로 되돌리기</button></div>
+      </details>
+      <div class="note">뉴스 점수 = 헤드라인 재료 강도(대형 계약·최대 실적 +, 급락·악재 −, 명세 4.11 긍정/부정어) × 토스 노출 순서 × 최신성. 종합 = 뉴스 점수 + 실시간 타점 점수(관심종목에 있을 때). 규칙 기반 참고 분석이며 매수 추천이 아닙니다.</div>
+    </section>
+
+    <section class="card">
+      <h2>주요뉴스 중요도 순 <span class="cnt" id="nlCnt">0</span><span class="mut num" style="font-weight:400;font-size:12px" id="nlMeta"></span><span class="sp"></span>
+        <select id="nlFilter" style="font-size:12px;padding:3px 7px"><option value="all">전체</option><option value="market">시장 전체</option><option value="stock">종목</option><option value="pos">호재</option><option value="neg">악재</option></select></h2>
+      <div class="nl" id="newsList"></div>
+      <div class="note">중요도 = 재료 강도(|점수|+1) × 최신성(24시간에 절반) × 토스 노출 순서, 시장 전체 뉴스(지수·금리·환율·유가·선거 등) ×1.3, 종목이 언급된 뉴스 ×1.2. 빨강 = 호재, 파랑 = 악재, 회색 = 중립.</div>
+    </section>
+
+    <section class="card">
+      <h2>매크로 지표 <span class="mut num" style="font-weight:400;font-size:12px" id="mcMeta"></span><span class="sp"></span><span class="badge b-neu" id="mcTone">–</span></h2>
+      <div class="mc" id="mcList"></div>
+      <div class="note">일간 = 토스 하단 지표 바의 실제 지수(달러 인덱스·S&P500·나스닥, 예약 작업이 30분마다 읽음). 없으면 대체 ETF의 전일 종가 대비. 실시간 = 대체 ETF(현재가 API) 30분 변화.
+        WTI는 USO, 10년물 금리는 IEF로 봅니다(IEF가 오르면 금리는 내림). 영향 점수 = 지표마다 우호 +1 · 중립 0 · 악영향 −1의 합 → +2 이상 우호, −2 이하 위험 회피. 주요뉴스 시장 분위기와 07:00·15:00 종목 추천에 반영합니다.</div>
+    </section>
+  </div>
+</main>
+<div id="toasts"></div>
+<footer>토스증권 Open API 현재가(읽기 전용)를 모아 만든 분봉과 규칙 기반 기술적 지표를 활용한 참고용 시각화이며, 투자 자문이나 매매 추천이 아닙니다. 주문 기능은 없습니다.</footer>
+
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 점수 계산에 필요한 최소 봉 수. 20봉이면 1분봉 기준 09:20부터 점수가 나와 ORB 구간(09:15~09:30)에 맞출 수 있다
+const KOFF=9*3600e3, WARM=20;
+const kstDay=t=>new Date(t+KOFF).toISOString().slice(0,10);
+// 미국장(KST 23:30~06:00)은 한국 자정을 넘기므로 미국 동부(UTC−5) 날짜로 세션을 나눈다
+const usDay=t=>new Date(t-5*3600e3).toISOString().slice(0,10);
+const kstHM=t=>{const d=new Date(t+KOFF);return d.getUTCHours()*60+d.getUTCMinutes();};
+const hms=t=>new Date(t+KOFF).toISOString().slice(11,19);
+// 장 시작 후 경과 분: 국내 09:00 KST, 미국 09:30 ET(UTC−5)
+const openMin=(t,kr)=>{if(kr)return kstHM(t)-540;const d=new Date(t-5*3600e3);return d.getUTCHours()*60+d.getUTCMinutes()-570;};
+
+// ---------- 설정 ----------
+// rsiMax·gapMax·openSkip·expRatio 는 진입 관문 기준(명세 4.4 기본값). 성공률 분석의 개선안으로 조정할 수 있다
+// 기본값은 tools/optimize.js 로 실제 시세(11/3~11/4, 77종목)를 탐색해 "매수 기준 돌파 → 보유 창 안에 +2% 도달" 성공률이 가장 높았던 조합(11/4)
+// breadthMin: 시장 폭 필터(11/4 추가) — 같은 시장 관심종목 중 VWAP 위 비율이 이 % 미만이면 진입하지 않는다
+const OPT={tf:3,buy:85,sell:30,target:2,stopAtr:2.5,horizon:48,rsiMax:80,gapMax:2.5,openSkip:15,expRatio:1.25,breadthMin:65};
+const DEF={...OPT,btStop:1,alert:false,sel:null,ver:4};
+let cfg={...DEF};
+try{Object.assign(cfg,JSON.parse(localStorage.getItem('toss-signal-cfg')||'{}'));}catch(e){}
+if(!(cfg.ver>=3))Object.assign(cfg,OPT);  // 최적화 결과를 예전에 저장된 설정에도 한 번 적용한다(이후 직접 바꾼 값은 유지)
+if(!(cfg.ver>=4))cfg.breadthMin=OPT.breadthMin;
+cfg.ver=4;
+const saveCfg=()=>{try{localStorage.setItem('toss-signal-cfg',JSON.stringify(cfg));}catch(e){}};
+
+// ---------- 지표 ----------
+function sma(a,n){const o=Array(a.length).fill(null);let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];if(i>=n-1)o[i]=s/n;}return o;}
+function ema(a,n){const o=[],k=2/(n+1);let e=a[0];for(let i=0;i<a.length;i++){e=i?a[i]*k+e*(1-k):a[0];o.push(e);}return o;}
+function rstd(a,n){const o=Array(a.length).fill(null);for(let i=n-1;i<a.length;i++){let m=0;for(let k=i-n+1;k<=i;k++)m+=a[k];m/=n;let v=0;for(let k=i-n+1;k<=i;k++)v+=(a[k]-m)**2;o[i]=Math.sqrt(v/n);}return o;}
+function rsi(c,n){const o=Array(c.length).fill(null);let g=0,l=0;for(let i=1;i<c.length;i++){const d=c[i]-c[i-1],u=Math.max(d,0),w=Math.max(-d,0);
+  if(i<=n){g+=u/n;l+=w/n;}else{g=(g*(n-1)+u)/n;l=(l*(n-1)+w)/n;}if(i>=n)o[i]=l===0?(g===0?50:100):100-100/(1+g/l);}return o;}
+function atrArr(b,n){const o=Array(b.length).fill(null);let a=0;for(let i=0;i<b.length;i++){
+  const tr=i?Math.max(b[i].h-b[i].l,Math.abs(b[i].h-b[i-1].c),Math.abs(b[i].l-b[i-1].c)):b[i].h-b[i].l;
+  if(i<n){a+=tr/n;if(i===n-1)o[i]=a;}else{a=(a*(n-1)+tr)/n;o[i]=a;}}return o;}
+function vwapArr(b,hasVol){const o=[];let pv=0,vv=0,sum=0,cnt=0,day=null;for(const x of b){if(x.day!==day){day=x.day;pv=vv=sum=cnt=0;}
+  const tp=(x.h+x.l+x.c)/3;pv+=tp*x.v;vv+=x.v;sum+=tp;cnt++;o.push(hasVol&&vv>0?pv/vv:sum/cnt);}return o;}
+const quant=(arr,p)=>{const s=arr.filter(x=>x!=null).sort((a,b)=>a-b);return s.length?s[Math.floor((s.length-1)*p)]:null;};
+
+// 틱 → 분봉. 세 번째 값이 누적 거래량이면 차분해서 봉 거래량으로 쓴다
+function buildBars(tk,tf,dayOf=kstDay){
+  const ms=tf*60000,bars=[];let prev=null,hasVol=false;
+  for(const [t,p,v] of tk){
+    const t0=Math.floor(t/ms)*ms;let b=bars[bars.length-1];
+    if(!b||b.t!==t0){b={t:t0,o:p,h:p,l:p,c:p,v:0,day:dayOf(t0)};bars.push(b);}
+    else{if(p>b.h)b.h=p;if(p<b.l)b.l=p;b.c=p;}
+    if(v!=null){hasVol=true;if(prev!=null&&v>=prev)b.v+=v-prev;prev=v;}
+  }
+  return {bars,hasVol};
+}
+
+// ---------- 점수 엔진 (명세 4장 signal.js v3 규칙) ----------
+// 시장 폭: 같은 시장(국내/미국) 관심종목 중 봉 마감가가 당일 VWAP 위인 비율. {K:{봉시각:비율}, U:{…}}
+function breadthOf(src){
+  const acc={K:{},U:{}};
+  for(const s in src){const {bars,hasVol,kr}=src[s],VW=vwapArr(bars,hasVol),m=acc[kr?'K':'U'];
+    for(let i=WARM;i<bars.length;i++){const g=m[bars[i].t]||(m[bars[i].t]=[0,0]);g[0]++;if(bars[i].c>VW[i])g[1]++;}}
+  const out={K:{},U:{}};
+  for(const k in acc)for(const t in acc[k]){const [n,u]=acc[k][t];if(n>=3)out[k][t]=u/n;}  // 3종목 미만이면 판단하지 않는다
+  return out;
+}
+function evaluate(bars,hasVol,P,kr,mkt){
+  const n=bars.length,C=bars.map(b=>b.c),H=bars.map(b=>b.h),L=bars.map(b=>b.l),V=bars.map(b=>b.v);
+  const POS=bars.map(b=>b.h>b.l?(b.c-b.l)/(b.h-b.l):0.5);
+  const s5=sma(C,5),s20=sma(C,20),s40=sma(C,40),r9=rsi(C,9);
+  const e5=ema(C,5),e13=ema(C,13),mac=C.map((_,i)=>e5[i]-e13[i]),sg=ema(mac,6),hist=mac.map((x,i)=>x-sg[i]);
+  const sd=rstd(C,20),bbu=s20.map((m,i)=>m==null?null:m+2*sd[i]),bbl=s20.map((m,i)=>m==null?null:m-2*sd[i]);
+  const bbw=s20.map((m,i)=>m==null||!m?null:(bbu[i]-bbl[i])/m);
+  const A=atrArr(bars,14),VW=vwapArr(bars,hasVol),vs20=sma(V,20);
+  const OBV=[0];for(let i=1;i<n;i++)OBV.push(OBV[i-1]+Math.sign(C[i]-C[i-1])*V[i]);
+  const tfMs=P.tf*60000,hourBars=Math.round(60/P.tf),CLOSE=15*60+20;
+  const rows=[];let setup=null,prev=null,cooldown=0,after=false,dHi=-Infinity,dLo=Infinity;
+  for(let i=0;i<n;i++){
+    const b=bars[i],c=b.c;
+    if(i===0||b.day!==bars[i-1].day){setup=null;prev=null;cooldown=0;after=false;dHi=-Infinity;dLo=Infinity;}
+    dHi=Math.max(dHi,b.h);dLo=Math.min(dLo,b.l);
+    const live=i===n-1&&Date.now()<b.t+tfMs;
+    if(i<WARM){rows.push({t:b.t,c,score:null,live});continue;}
+    const a=Math.max(A[i]||0,c*1e-4),vw=VW[i],above=c>vw,vwUp=vw>VW[i-6],gap=(c-vw)/a;
+    const R=[];let ctx=0;const add=(p,txt)=>{ctx+=p;R.push([p,txt]);};
+    // 보조 점수(4.5)
+    if(above&&vwUp)add(6,'VWAP 위 + VWAP 상승');else if(!above&&!vwUp)add(-6,'VWAP 아래 + VWAP 하락');else if(above)add(2,'VWAP 위');else add(-2,'VWAP 아래');
+    // 40봉 전에는 SMA40 이 없으므로 이평 배열을 판단하지 않는다(null 비교는 0으로 바뀌어 오판한다)
+    const bull=s40[i]!=null&&s5[i]>s20[i]&&s20[i]>s40[i],bear=s40[i]!=null&&s5[i]<s20[i]&&s20[i]<s40[i];
+    if(bull)add(4,'이평 정배열 (5>20>40)');else if(bear)add(-4,'이평 역배열 (5<20<40)');
+    if(hist[i]>0&&hist[i]>hist[i-2])add(4,'MACD 히스토그램 양수·증가');else if(hist[i]<0&&hist[i]<hist[i-2])add(-4,'MACD 히스토그램 음수·감소');
+    const pos3=(POS[i]+POS[i-1]+POS[i-2])/3;
+    if(pos3>=0.65&&c>C[i-3])add(3,'최근 3봉 종가가 봉 상단');else if(pos3<=0.35&&c<C[i-3])add(-3,'최근 3봉 종가가 봉 하단');
+    let vr=null,vNow=null;
+    if(hasVol&&vs20[i-1]>0){
+      vr=Math.max(V[i],V[i-1],V[i-2])/vs20[i-1];vNow=V[i]/vs20[i-1];const dir=Math.sign(c-C[i-3]);
+      if(dir&&vr>=2)add(8*dir,`거래량 ${vr.toFixed(1)}배 동반 ${dir>0?'상승':'하락'}`);
+      else if(dir&&vr>=1.5)add(5*dir,`거래량 ${vr.toFixed(1)}배 동반 ${dir>0?'상승':'하락'}`);
+      if(vr<0.6){ctx*=0.8;R.push([0,'거래량 부족 — 보조 점수 ×0.8']);}
+    }
+    ctx=Math.round(ctx);
+    const volOk=k=>vNow==null||vNow>=k;
+    const hi12=Math.max(...H.slice(i-12,i)),lo12=Math.min(...L.slice(i-12,i));
+    let aboveN=0;for(let k=i-12;k<i;k++)if(C[k]>VW[k])aboveN++;
+    // 매수 트리거(4.3, ORB는 KRX 개장 레인지가 필요해 국내 종목만)
+    let buy=null,sell=null;
+    const m=kstHM(b.t);
+    if(kr&&m>=555&&m<570){
+      let orH=-Infinity,orL=Infinity,prevAbove=false,k0=i;
+      while(k0>0&&bars[k0-1].day===b.day)k0--;
+      for(let k=k0;k<i;k++){const mk=kstHM(bars[k].t);if(mk>=540&&mk<555){orH=Math.max(orH,H[k]);orL=Math.min(orL,L[k]);}}
+      for(let k=k0;k<i;k++)if(kstHM(bars[k].t)>=555&&C[k]>orH)prevAbove=true;
+      if(isFinite(orH)&&c>orH&&!prevAbove&&volOk(1.3))buy={type:'ORB 돌파',pts:22,level:orH};
+      if(isFinite(orL)&&c<orL&&volOk(1.3))sell={type:'ORB 하향',pts:22};
+    }
+    if(!buy&&c>hi12&&POS[i]>=0.6&&above&&volOk(1.5))buy={type:'고점 돌파',pts:22,level:hi12};
+    if(!buy&&aboveN>=8.4){const lo3=Math.min(L[i],L[i-1],L[i-2]);
+      if(lo3<=vw+a*0.3&&lo3>=vw-a*0.5&&above&&c>H[i-1]&&c>b.o)buy={type:'VWAP 눌림 재돌파',pts:18,level:lo3};}
+    const p20=quant(bbw.slice(i-36,i),0.2);
+    if(!buy&&bbw[i-1]!=null&&p20!=null&&bbw[i-1]<=p20&&c>bbu[i]&&volOk(1.3))buy={type:'응축 해소',pts:16,level:(b.h+b.l)/2};
+    // 매도 트리거(4.10)
+    if(!sell&&c<lo12&&POS[i]<=0.4&&!above&&volOk(1.5))sell={type:'저점 이탈',pts:22};
+    if(!sell&&12-aboveN>=8.4&&Math.max(H[i],H[i-1],H[i-2])>=vw-a*0.3&&!above&&c<L[i-1]&&c<b.o)sell={type:'VWAP 저항 실패',pts:18};
+    if(!sell&&b.h>hi12&&c<hi12&&POS[i]<=0.35&&volOk(1.3))sell={type:'고점 돌파 실패',pts:16};
+    // 진입 관문(4.4)
+    const stopW=a*P.stopAtr/c*100,expMove=a/c*100*Math.sqrt(P.horizon),gates=[];
+    const om=openMin(b.t,kr);
+    if(om>=0&&om<P.openSkip)gates.push(`개장 ${P.openSkip}분 이내`);
+    if(kr&&CLOSE-m<P.horizon*P.tf)gates.push('15:20까지 보유 창보다 짧음');
+    if(!vwUp)gates.push('VWAP 하락 중');
+    if(bear)gates.push('이평 역배열');
+    if(gap>P.gapMax)gates.push(`VWAP 이격 > ATR×${P.gapMax}`);
+    if(r9[i]>=P.rsiMax)gates.push(`RSI(9) ≥ ${P.rsiMax}`);
+    if(c/C[Math.max(0,i-hourBars)]-1>=0.04)gates.push('1시간 +4% 이상');
+    if(expMove<P.target*P.expRatio)gates.push(`기대 변동폭 부족 (${expMove.toFixed(2)}% < ${(P.target*P.expRatio).toFixed(2)}%)`);
+    if(stopW>2)gates.push('손절폭 2% 초과');
+    const br=mkt?mkt[b.t]:null;
+    if(br!=null&&P.breadthMin>0&&br*100<P.breadthMin)gates.push(`시장 폭 ${Math.round(br*100)}% < ${P.breadthMin}%`);
+    if(cooldown>0)gates.push(`무효 직후 재진입 금지 (${cooldown}봉)`);
+    if(buy&&buy.type==='VWAP 눌림 재돌파'&&dHi/c-1<0.008)gates.push('당일 고가까지 0.8% 미만');
+    // 셋업 진행(4.6·4.7)
+    let event=null,mark=null;
+    if(setup){
+      const k=i-setup.bar,inv=live?0.5:0.25,vwl=live?0.5:0.2;
+      if(b.l<=setup.stop){event='invalid';R.push([0,'손절선 도달']);}
+      else if(c<setup.level-a*inv){event='invalid';R.push([0,'기준선 이탈']);}
+      else if(c<vw-a*vwl){event='invalid';R.push([0,'VWAP 이탈']);}
+      else if(sell){event='invalid';R.push([0,`매도 트리거 확정: ${sell.type}`]);}
+      else if(b.h>=setup.target)event='target';
+      else if(kr&&m>=CLOSE)event='expire';
+      else if(setup.state==='first'){if(k>=1&&k<=3&&c>setup.level&&!live){setup.state='confirmed';mark='confirm';}else if(k>3)event='expire';}
+      else if(k>P.horizon)event='expire';
+    }
+    let score;
+    if(event==='invalid'){score=Math.min(40,50+ctx-(sell?sell.pts:0));setup=null;after=false;cooldown=3;mark='invalid';}
+    else{
+      if(event==='target'){mark='target';setup=null;after=true;R.unshift([0,'목표가 도달']);}
+      else if(event==='expire'){setup=null;after=true;R.unshift([0,'셋업 만료']);}
+      if(setup){
+        const k=i-setup.bar,w=k<=6?1:Math.max(0.6,1-0.4*(k-6)/Math.max(1,P.horizon-6));
+        setup.peak=Math.max(setup.peak,ctx);
+        const ce=Math.max(ctx,setup.peak-8);
+        score=50+setup.pts*w+ce+(setup.state==='confirmed'?4:0);
+        if(setup.state==='first')score=Math.min(84,score);
+        R.unshift([Math.round(setup.pts*w),`${setup.type} 셋업 ${setup.state==='confirmed'?'확인':'1차'} (${k}/${P.horizon}봉)`]);
+        if(ce!==ctx)R.push([0,`보조 점수 하락 제한 (최고 대비 −8)`]);
+      }else if(!event&&buy&&!gates.length){
+        setup={type:buy.type,pts:buy.pts,level:buy.level,state:'first',bar:i,entry:c,stop:c-a*P.stopAtr,target:c*(1+P.target/100),peak:ctx};
+        score=Math.min(84,50+buy.pts+ctx);mark='entry';after=false;
+        R.unshift([buy.pts,`매수 트리거: ${buy.type}`]);
+      }else{
+        score=50+ctx;
+        if(sell){score-=sell.pts;R.unshift([-sell.pts,`매도 트리거: ${sell.type}`]);if(!event)mark='sellTrig';}
+        if(buy&&gates.length)R.push([0,`${buy.type} 감지 — 관문 미통과`]);
+        if(score>50){
+          if(gap>2.5){const p=Math.min(15,(gap-2.5)*6);score-=p;R.push([-Math.round(p),'VWAP 과열 이격']);}
+          if(r9[i]>=80){score-=6;R.push([-6,'RSI(9) 80 이상 과열']);}
+          if(dHi/c-1<0.008){score-=5;R.push([-5,'당일 고가까지 0.8% 미만']);}
+          const reach=Math.min(1,expMove/P.target);
+          if(reach<1){score=50+(score-50)*Math.max(0.3,reach);R.push([0,`변동폭 부족 — 가점 ×${Math.max(0.3,reach).toFixed(2)}`]);}
+          if(kr&&m<555)score=50+(score-50)*0.5;
+          else if(kr){const left=CLOSE-m,need=P.horizon*P.tf;if(left<need)score=50+(score-50)*Math.max(0,left/need);}
+        }else if(gap<-2.5){score=Math.min(50,score+Math.min(12,(-gap-2.5)*5));R.push([0,'VWAP 하방 과이격 — 감점 완화']);}
+        score=Math.min(74,score);
+      }
+      if(prev!=null&&prev>=50&&!sell&&score<prev-5){score=prev-5;R.push([0,'하락 속도 제한 (봉당 −5)']);}
+    }
+    // 시장 폭이 기준 미만이면 진행 중인 셋업도 매수 기준을 넘지 못하게 묶는다(돌파 시점의 시장 상태로 거른다)
+    if(br!=null&&P.breadthMin>0&&br*100<P.breadthMin&&score>=P.buy){score=P.buy-1;R.push([0,`시장 폭 ${Math.round(br*100)}% < ${P.breadthMin}% — 매수 보류`]);}
+    score=Math.round(Math.max(0,Math.min(100,score)));
+    if(after&&score<65)after=false;
+    if(!mark&&prev!=null){if(prev<P.buy&&score>=P.buy)mark='buyZone';else if(prev>=P.sell&&score<P.sell)mark='sellZone';}
+    // 장대양봉 임박 신호(4.14)
+    let pre=null;
+    if(above&&bbw[i]!=null&&p20!=null&&bbw[i]<=p20&&!bear&&bars[i-5].day===b.day){
+      const sat=['VWAP 위 + 밴드 응축 (필수)'];
+      if(Math.max(...H.slice(i-5,i+1))-Math.min(...L.slice(i-5,i+1))<=a*2)sat.push('최근 6봉 박스 높이 ≤ ATR×2');
+      if(dHi>dLo&&(c-dLo)/(dHi-dLo)>=0.6)sat.push('당일 범위 상위 40%');
+      if(hasVol&&vs20[i]>0&&(V[i]+V[i-1]+V[i-2])/3<=vs20[i]*0.7)sat.push('거래량 마름');
+      if(hasVol&&OBV[i]>OBV[i-12])sat.push('OBV 순유입 (12봉)');
+      pre={n:sat.length,sat};
+    }
+    rows.push({t:b.t,c,score,live,event,mark,after,pre,reasons:R,gates:buy?gates:[],buy,sell,
+      setup:setup?{...setup,k:i-setup.bar}:null,
+      ind:{rsi:r9[i],vwap:vw,gap,atr:a,vr,expMove,stopW,s20:s20[i],bbw:bbw[i],breadth:br}});
+    if(!live){prev=score;if(cooldown>0&&event!=='invalid')cooldown--;}
+  }
+  return {rows,ind:{s5,s20,bbu,bbl,VW}};
+}
+
+function labelOf(r,B,S){
+  if(!r||r.score==null)return ['데이터 축적 중','데이터 축적 중','neu'];
+  if(r.event==='invalid')return ['무효 · 청산','매수 근거 무효 — 청산 검토','sell'];
+  if(r.event==='target')return ['목표 도달','목표 도달 — 익절 검토','buyw'];
+  if(r.setup&&r.setup.state==='confirmed'&&r.score>=B-15)return [`매수 유지 ${r.setup.k}봉`,`매수 유지 (진입 후 ${r.setup.k}봉)`,'buyw'];
+  if(r.after&&r.score>=B-15)return ['셋업 종료','셋업 종료 — 신규 진입 아님','neu'];
+  if(r.score>=B+5)return ['확인된 타점','확인된 매수 타점','buy'];
+  if(r.score>=B)return ['1차 타점','1차 타점 — 다음 봉 확인 대기','buy'];
+  if(r.score>=B-15)return ['매수 대기','매수 대기','buyw'];
+  if(r.score<S-15)return ['매도 우세','매도 우세','sell'];
+  if(r.score<S)return ['청산 검토','청산 검토','sellw'];
+  return ['관망','관망','neu'];
+}
+const MARKS={entry:['매수 1차 타점','buy'],confirm:['매수 타점 확인','buy'],buyZone:['매수 구간 진입','buy'],
+  target:['목표 도달 — 익절 검토','buyw'],invalid:['매수 근거 무효 — 청산 검토','sell'],sellTrig:['매도 트리거','sell'],sellZone:['매도 구간 진입','sell']};
+
+// ---------- 데이터 ----------
+const store={ticks:{},meta:{},names:{},status:null,seq:0,ok:false,lastPoll:0};
+let results={},seen=new Set(),primed=false;
+const syms=()=>store.status?store.status.symbols:[];
+const nameOf=s=>store.names[s]||s;
+const curOf=s=>(store.meta[s]&&store.meta[s].currency)||(/^\d+$/.test(s)?'KRW':'USD');
+const fmtP=(v,s)=>v==null?'–':v.toLocaleString('ko-KR',{minimumFractionDigits:curOf(s)==='KRW'?0:2,maximumFractionDigits:curOf(s)==='KRW'?0:2});
+
+// 파일로 직접 열었을 때도 로컬 분석 서버에 붙는다. 서버가 없으면 브라우저 내장 데모로 동작한다
+const API=location.protocol==='file:'?'http://127.0.0.1:8765':'';
+async function fetchState(){
+  const r=await fetch(API+'/api/state?since='+store.seq,{cache:'no-store'});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.json();
+}
+async function poll(){
+  try{
+    let d=await fetchState();
+    if(local){local=null;store.ticks={};store.meta={};store.seq=0;seen=new Set();primed=false;d=await fetchState();toast('분석 서버에 연결되었습니다 — 서버 시세로 전환합니다');}
+    store.status=d.status;store.names=d.names||{};Object.assign(store.meta,d.meta);
+    for(const s of d.status.symbols){
+      const arr=store.ticks[s]||(store.ticks[s]=[]),lastSeq=arr.length?arr[arr.length-1][3]:0;
+      for(const x of d.ticks[s]||[])if(x[3]>lastSeq)arr.push(x);  // 조회가 겹쳐도 같은 틱을 두 번 넣지 않는다
+    }
+    for(const s of Object.keys(store.ticks))if(!d.status.symbols.includes(s))delete store.ticks[s];
+    store.seq=d.seq;store.ok=true;store.lastPoll=Date.now();
+  }catch(e){
+    if(!local&&!store.lastPoll&&location.protocol==='file:')launchServer();  // 파일로 열었는데 서버가 꺼져 있으면 run.bat 을 한 번 켜 본다
+    if(local||!store.lastPoll){localDemoStep();store.ok=true;}else store.ok=false;
+  }
+  if(store.ok&&!local&&Date.now()-newsFetchedAt>60000){await fetchNews();await fetchMacro();}
+  recompute();render();
+  (window.requestIdleCallback||setTimeout)(backtest);  // 화면 갱신이 끝난 뒤 한가할 때 성공률을 계산한다
+  setTimeout(poll,Math.max(1000,((store.status&&store.status.interval)||5)*1000));
+}
+// 예약 작업이 저장한 자동 분석(news/latest.json)을 1분마다 확인해 더 최신이면 바꾼다
+let newsFetchedAt=0;
+async function fetchNews(){
+  newsFetchedAt=Date.now();
+  try{
+    const d=await (await fetch(API+'/api/news',{cache:'no-store'})).json();
+    if(d&&d.at&&Array.isArray(d.items)&&d.items.length&&(newsSrc.snap||d.at>newsSrc.at||(newsSrc.auto&&d.at!==newsSrc.at))){
+      const fresh=!newsSrc.auto||d.at!==newsSrc.at;
+      newsSrc={snap:false,auto:true,at:d.at,items:d.items,close:d.close||{},report:d.report||null};
+      if(fresh&&primed)toast('새 주요뉴스 자동 분석이 도착했습니다');
+    }
+  }catch(e){}
+}
+
+// ---------- 매크로 지표 ----------
+// sign: 지표가 오를 때 주식시장에 +1(우호)/−1(악영향). th: 중립으로 보는 변화폭(%). inv: ETF 가 지표와 반대로 움직임(채권 가격↔금리)
+const MACRO_DEF=[
+  {k:'DXY',name:'달러 인덱스',etf:'UUP',sign:-1,th:0.15,why:'주요 6개 통화 대비 달러 가치. 오르면 달러 강세 → 주식시장 악영향'},
+  {k:'WTI',name:'유가(WTI)',etf:'USO',sign:-1,th:1.0,why:'국제 원유 가격. 오르면 물가 압력↑·금리 인하 어려움 → 악영향'},
+  {k:'US10Y',name:'미국채 10년물',etf:'IEF',sign:-1,th:0.1,inv:true,why:'대표 장기금리. 오르면 대출·자금조달 부담↑, 기술·성장주에 특히 불리'},
+  {k:'SPX',name:'S&P 500',etf:'SPY',sign:1,th:0.3,why:'미국 대형주 500개. 미국 주식시장 전체 흐름'},
+  {k:'NDX',name:'나스닥',etf:'QQQ',sign:1,th:0.4,why:'기술·성장주 중심. AI·반도체·빅테크 흐름'}];
+let macro=null;
+async function fetchMacro(){try{const d=await (await fetch(API+'/api/macro',{cache:'no-store'})).json();if(d&&d.proxy){macro=d;renderMacro();}}catch(e){}}
+// 지표별 일간 변화(지표 기준 %)·실시간 30분 변화·영향(+1/0/−1)과 합계
+function macroEval(){
+  if(!macro)return null;
+  const idx=(macro.index&&macro.index.items)||{},idxFresh=macro.index&&macro.index.at&&Date.now()-macro.index.at<18*3600e3;
+  let total=0,n=0;
+  const rows=MACRO_DEF.map(d=>{
+    const x=macro.proxy[d.k]||{},s=d.inv?-1:1,pct=(a,b)=>a&&b?(a/b-1)*100:null;
+    const real=idxFresh&&idx[d.k]&&idx[d.k].pct!=null?idx[d.k]:null;
+    const etfDay=pct(x.p,x.prev),live=pct(x.p,x.ago30);
+    const day=real?real.pct:etfDay==null?null:s*etfDay;           // 지표 방향으로 환산
+    const basis=day!=null?day:live==null?null:s*live*3;              // 일간 값이 없으면 30분 변화를 크게 보고 대신 쓴다
+    const eff=basis==null?null:Math.abs(basis)<d.th?0:Math.sign(basis)*d.sign;
+    if(eff!=null){total+=eff;n++;}
+    return {...d,x,real,etfDay,live,day,eff,src:real?'토스 지수':etfDay!=null?'ETF 전일 대비':live!=null?'ETF 30분':null};
+  });
+  const tone=!n?['–','neu']:total>=2?['우호','buyw']:total<=-2?['위험 회피','sellw']:['혼조','neu'];
+  return {rows,total,n,tone};
+}
+function renderMacro(){
+  const E=macroEval();if(!E)return;
+  const pf=v=>v==null?'–':(v>0?'+':'')+v.toFixed(2)+'%',cls=v=>v>0?'up':v<0?'dn':'mut';
+  $('#mcTone').className='badge b-'+E.tone[1];$('#mcTone').textContent=E.n?`${E.tone[0]} ${E.total>0?'+':''}${E.total}`:'데이터 대기';
+  const it=macro.index&&macro.index.at?new Date(macro.index.at+KOFF).toISOString().slice(5,16).replace('T',' '):null;
+  $('#mcMeta').textContent=it?`지수 ${it} KST`:'';
+  const nf=v=>v==null?'–':v.toLocaleString('en-US',{maximumFractionDigits:2});
+  $('#mcList').innerHTML='<div class="hd"><span>지표</span><span class="ef">일간</span><span class="ef">실시간(ETF)</span><span class="ef">주식시장</span></div>'+
+    E.rows.map(r=>{
+      const ef=r.eff==null?['–','neu']:r.eff>0?['우호','buyw']:r.eff<0?['악영향','sellw']:['중립','neu'];
+      const val=r.real?nf(r.real.v):r.x.p!=null?`${r.etf} ${nf(r.x.p)}`:'–';
+      const liveTxt=r.live==null?'–':(r.inv?`금리 ${r.live<0?'↑':r.live>0?'↓':'–'} (${r.etf} ${pf(r.live)})`:pf(r.live));
+      return `<div><span class="nm"><b>${esc(r.name)}</b><div class="num">${esc(val)}</div></span>`+
+        `<span class="ef num ${cls(r.day||0)}">${r.day==null?'–':r.inv?`금리 ${r.day>0?'↑':r.day<0?'↓':'–'} (${r.etf} ${pf(r.etfDay)})`:pf(r.day)}<div class="sub">${esc(r.src||'')}</div></span>`+
+        `<span class="ef num ${cls(r.live==null?0:r.inv?-r.live:r.live)}">${liveTxt}</span>`+
+        `<span class="ef"><span class="badge b-${ef[1]}">${ef[0]}</span></span><span class="why">${esc(r.why)}</span></div>`;
+    }).join('');
+  renderNews();
+}
+
+// install_launcher.bat 이 등록한 tossanalyzer:// 링크로 run.bat 을 켠다(브라우저가 실행 여부를 한 번 묻는다)
+function launchServer(){
+  try{const a=document.createElement('a');a.href='tossanalyzer://start';a.click();}catch(e){}
+}
+
+// ---------- 브라우저 내장 데모(서버 없이 화면 확인용 가상 시세) ----------
+const DEMO_BASE={'196170':215500,'066970':82600,'005930':219500,'000660':1394000,AAPL:329.7,NVDA:202.8,MSFT:505.3,TSLA:401.2};
+const DEMO_NAMES={'196170':'알테오젠','066970':'엘앤에프','005930':'삼성전자','000660':'SK하이닉스',AAPL:'Apple',NVDA:'NVIDIA',MSFT:'Microsoft',TSLA:'Tesla'};
+let local=null;
+const gauss=()=>{let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+function demoTick(s,t){
+  const st=local.px[s]||(local.px[s]={p:DEMO_BASE[s]||10000,v:0,d:0}),kr=/^\d+$/.test(s);
+  st.d=st.d*0.98+gauss()*0.00012;st.p*=Math.exp(st.d+gauss()*0.0011);st.v+=(200+Math.random()*2800)*(1+Math.abs(st.d)*3000);
+  (store.ticks[s]||(store.ticks[s]=[])).push([t,kr?Math.round(st.p):Math.round(st.p*100)/100,Math.round(st.v),++local.seq]);
+  store.meta[s]={currency:kr?'KRW':'USD'};
+}
+function seedLocal(s){const now=Date.now();for(let t=now-150*60e3;t<now;t+=5000)demoTick(s,t);}
+function localDemoStep(){
+  if(!local){
+    local={px:{},seq:0};store.ticks={};store.meta={};store.names={...DEMO_NAMES};
+    store.status={mode:'local',symbols:Object.keys(DEMO_BASE),interval:5,lastOk:null,error:null};
+    store.status.symbols.forEach(seedLocal);
+  }
+  const now=Date.now();for(const s of store.status.symbols)demoTick(s,now);
+  store.status.lastOk=now;
+}
+
+let mktBreadth={K:{},U:{}};
+function recompute(){
+  results={};const fresh=[],built={};
+  for(const s of syms()){const kr=curOf(s)==='KRW';built[s]={...buildBars(store.ticks[s]||[],cfg.tf,kr?kstDay:usDay),kr};}
+  mktBreadth=breadthOf(built);
+  for(const s of syms()){
+    const tk=store.ticks[s]||[],kr=curOf(s)==='KRW',dayOf=kr?kstDay:usDay;
+    const {bars,hasVol}=built[s];
+    const ev=evaluate(bars,hasVol,cfg,kr,mktBreadth[kr?'K':'U']);
+    const lastDay=bars.length?bars[bars.length-1].day:null;
+    const first=tk.find(x=>dayOf(x[0])===lastDay);
+    results[s]={bars,hasVol,kr,...ev,last:ev.rows[ev.rows.length-1],open:first?first[1]:null};
+    for(const r of ev.rows)if(r.mark&&!r.live){const key=s+'|'+r.t+'|'+r.mark;if(!seen.has(key)){seen.add(key);if(primed)fresh.push({s,r});}}
+  }
+  primed=true;
+  if(fresh.length)notify(fresh);
+}
+
+// ---------- 성공률: 점수 80점 돌파 시 매수 → 당일 종가까지 +2.5% ----------
+// 진입: 마감 봉에서 점수가 80 미만→80 이상으로 바뀐 봉의 종가. 성공: 당일 장 마감 전에 +2.5% 도달.
+// 실패: 손절선(진입가 −1%·−2%·…·−5%) 도달(같은 봉에서 목표와 함께 닿으면 손절로 봄), 또는 당일 종가까지 +2.5% 미달성.
+// 손절선 단계마다 따로 계산하고, 한 종목에 한 번에 한 거래만 센다.
+const BT={entry:80,target:2.5,keepDays:60,stops:[1,2,3,4,5]};
+const REASON={stop:'손절선 도달',close:'당일 종가까지 +2.5% 미달성',target:'목표 도달'};
+let btStore={};
+try{btStore=JSON.parse(localStorage.getItem('toss-bt2')||'{}');}catch(e){}  // 기준이 바뀌어 이전 결과(toss-bt)와 섞지 않는다
+// 장 마감 시각(epoch ms): 국내 15:30 KST, 미국 16:00 ET(UTC−5, 서머타임 미반영)
+const dayClose=(day,kr)=>{const [y,m,d]=day.split('-').map(Number);return kr?Date.UTC(y,m-1,d,6,30):Date.UTC(y,m-1,d,21,0);};
+const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+
+// src: {종목: {rows,bars,kr}}, P: {entry,target,stopPct}. 실패 사유와 진입 당시 지표를 함께 기록한다
+function simulate(src,P){
+  const trades=[];let pending=0;
+  for(const s in src){
+    const {rows,bars,kr}=src[s];let prev=null,busy=-1;
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i];
+      if(r.live)break;
+      if(r.score==null){prev=null;continue;}
+      const cross=prev!=null&&prev<P.entry&&r.score>=P.entry;prev=r.score;
+      if(!cross||i<=busy)continue;
+      const entry=r.c,day=bars[i].day,tgt=entry*(1+P.target/100),stop=entry*(1-P.stopPct/100);
+      let out=null,reason=null,k=i+1,hi=entry,lo=entry,last=entry;
+      for(;k<bars.length;k++){
+        const b=bars[k];
+        if(b.day!==day){out=0;reason='close';break;}  // 다음 거래일 봉이 나왔다 = 당일 장이 끝났다
+        hi=Math.max(hi,b.h);lo=Math.min(lo,b.l);last=b.c;
+        if(b.l<=stop){out=0;reason='stop';break;}
+        if(b.h>=tgt){out=1;reason='target';break;}
+      }
+      if(out==null&&Date.now()>dayClose(day,kr)+5*60e3){out=0;reason='close';}  // 장 마감 후 시세가 끊긴 경우
+      if(out==null){pending++;busy=Infinity;continue;}
+      busy=k;
+      trades.push({s,t:r.t,out,reason,stopPct:P.stopPct,held:Math.min(k,bars.length-1)-i,
+        mfe:+((hi/entry-1)*100).toFixed(2),mae:+((lo/entry-1)*100).toFixed(2),closeRet:+((last/entry-1)*100).toFixed(2),
+        trig:r.setup?r.setup.type:'없음',score:r.score,rsi:r.ind.rsi==null?null:+r.ind.rsi.toFixed(1),gap:+r.ind.gap.toFixed(2),
+        atrPct:+(r.ind.atr/entry*100).toFixed(2),om:openMin(r.t,kr),kr});
+    }
+  }
+  return {trades,pending};
+}
+const srcOf=R0=>{const o={};for(const s in R0)o[s]={rows:R0[s].rows,bars:R0[s].bars,kr:R0[s].kr};return o;};
+
+function backtest(){
+  const real=store.status&&store.status.mode==='real',book=real?btStore:{};  // 데모 시세 결과는 저장하지 않는다
+  if(!BT.stops.includes(cfg.btStop))cfg.btStop=BT.stops[0];
+  const src=srcOf(results),runs={};
+  for(const sp of BT.stops){
+    runs[sp]=simulate(src,{entry:BT.entry,target:BT.target,stopPct:sp});
+    for(const x of runs[sp].trades)book[`${x.s}|${cfg.tf}|${x.t}|${sp}`]=x;
+  }
+  if(real){
+    const cut=Date.now()-BT.keepDays*864e5;
+    for(const key in btStore)if(+key.split('|')[2]<cut)delete btStore[key];
+    try{localStorage.setItem('toss-bt2',JSON.stringify(btStore));}catch(e){}
+  }
+  const recsOf=sp=>Object.entries(book).filter(([k])=>{const p=k.split('|');return p[1]===String(cfg.tf)&&p[3]===String(sp);}).map(([,v])=>v);
+  const ladder=BT.stops.map(sp=>{const r=recsOf(sp),w=r.filter(x=>x.out).length;
+    return {sp,n:r.length,w,stop:r.filter(x=>x.reason==='stop').length,close:r.filter(x=>x.reason==='close').length,pending:runs[sp].pending,rate:r.length?w/r.length*100:null};});
+  const sel=ladder.find(x=>x.sp===cfg.btStop),el=$('#btRate');
+  el.textContent=sel.n?`성공률 ${sel.rate.toFixed(1)}%`:'성공률 –';
+  el.title=`점수 ${BT.entry}점 돌파 시 매수 → 당일 종가까지 +${BT.target}% 도달, 그 전에 손절선 −${cfg.btStop}% 미도달 (${cfg.tf}분봉)\n`+
+    `${sel.n?`성공 ${sel.w} / 판정 ${sel.n}건`:'판정된 거래 없음'}${sel.pending?` · 진행 중 ${sel.pending}건`:''}${real?' · 최근 '+BT.keepDays+'일 누적':' · 데모 시세(저장 안 함)'}`;
+  renderLadder(ladder);
+  renderBtPanel(recsOf(cfg.btStop),sel.pending,ladder);
+  // 1분마다, 또는 판정 거래 수가 바뀌면 개선안을 다시 계산한다
+  const base=runs[cfg.btStop];
+  if(!wiBusy&&(Date.now()-lastWhatIf>60000||base.trades.length!==lastWiN))runWhatIf(base);
+}
+
+function renderLadder(L){
+  $('#btLadder').innerHTML=L.map(x=>`<tr class="${x.sp===cfg.btStop?'sel':''}"><td style="text-align:left">−${x.sp}%</td>`+
+    `<td class="num"><b>${x.rate==null?'–':x.rate.toFixed(1)+'%'}</b></td><td class="num">${x.w}/${x.n}</td>`+
+    `<td class="num dn">${x.stop}</td><td class="num mut">${x.close}</td><td class="num dim">${x.pending||''}</td>`+
+    `<td>${x.sp===cfg.btStop?'<span class="mut">선택됨</span>':`<button data-stop="${x.sp}">선택</button>`}</td></tr>`).join('');
+}
+$('#btLadder').onclick=e=>{const b=e.target.closest('[data-stop]');if(!b)return;cfg.btStop=+b.dataset.stop;saveCfg();lastWhatIf=0;backtest();};
+
+function renderBtPanel(recs,pending,ladder){
+  const n=recs.length,wins=recs.filter(x=>x.out),fails=recs.filter(x=>!x.out);
+  $('#btSummary').innerHTML=n?`판정 <b>${n}</b>건 · 성공 <b class="up">${wins.length}</b> · 실패 <b class="dn">${fails.length}</b>${pending?` · 진행 중 ${pending}`:''}`+
+    (n<20?' <span class="dim">(표본 20건 미만 — 참고용)</span>':''):`아직 판정된 거래가 없습니다${pending?` (진행 중 ${pending}건)`:''}.`;
+  const cnt={};for(const x of fails)cnt[x.reason||'unknown']=(cnt[x.reason||'unknown']||0)+1;
+  $('#btReasons').innerHTML=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
+    `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin:3px 0"><span style="min-width:150px">${esc(REASON[k]||'사유 미기록(이전 버전)')}</span>`+
+    `<span class="bar" style="flex:1;margin:0"><i style="width:${v/fails.length*100}%;background:var(--dnw)"></i></span><span class="num mut">${v}건</span></div>`).join('');
+  // 실패 원인 진단: 사유별 통계와 성공·실패 거래의 진입 조건 차이
+  const I=[],R=x=>fails.filter(f=>f.reason===x),pct=v=>(v>0?'+':'')+v.toFixed(2)+'%';
+  const st=R('stop'),cl=R('close'),sp=cfg.btStop;
+  if(st.length){const h=median(st.map(x=>x.held)),m=median(st.map(x=>x.mfe));
+    I.push(`손절 ${st.length}건 — 진입 후 중앙값 ${h}봉 만에 −${sp}% 도달, 그 전 최고 ${pct(m)}. `+
+      (h<=2?`돌파 직후 되밀리는 가짜 돌파가 많습니다 → 손절선을 넓히거나(위 표 비교) 확인 타점(85점)에서만 진입해 보세요.`
+        :m>=1?'손절 전에 꽤 올랐다 꺾였습니다 → +1~1.5% 부근 분할 익절이나 본절 이동 규칙을 검토하세요.':'진입 뒤 힘이 없었습니다 → 진입 관문(RSI·이격)을 강화해 보세요.'));}
+  if(cl.length){const m=median(cl.map(x=>x.mfe)),c=median(cl.map(x=>x.closeRet)),o=median(cl.map(x=>x.om)),a=median(cl.filter(x=>x.atrPct!=null).map(x=>x.atrPct));
+    const late=cl.filter(x=>x.kr?x.om>=300:x.om>=300).length;  // 국내 14:00·미국 14:30 ET 이후 진입
+    I.push(`당일 종가까지 미달성 ${cl.length}건 — 장중 최고 상승 중앙값 ${pct(m)}, 종가 기준 ${pct(c)}${a!=null?`, 진입 시 ATR ${a.toFixed(2)}%`:''}. `+
+      (m>=1.5?'장중 목표 근처까지 갔다 종가까지 못 지켰습니다 → 목표를 낮추거나 분할 익절을 검토하세요.'
+        :'당일 움직임 자체가 작았습니다 → 변동성이 작은 종목·시간대 진입입니다. 기대 변동폭 비율을 높여 걸러 보세요.')+
+      (late?` 장 후반(개장 5시간 이후) 진입이 ${late}건으로 남은 시간이 부족했습니다.`:'')+(o!=null?` 진입 시각 중앙값: 개장 후 ${Math.round(o)}분.`:''));}
+  const ok=ladder.filter(x=>x.n>=3&&x.rate!=null).sort((a,b)=>b.rate-a.rate);
+  if(ok.length>1&&ok[0].sp!==sp)I.push(`손절선 비교: −${ok[0].sp}%에서 성공률이 가장 높습니다(${ok[0].rate.toFixed(1)}%, ${ok[0].n}건). 손절선을 넓히면 손실 1건의 크기도 커지므로 성공률과 함께 손익비를 확인하세요.`);
+  const cmp=(key,label,unit,th)=>{const f=fails.map(x=>x[key]).filter(v=>v!=null),w=wins.map(x=>x[key]).filter(v=>v!=null);
+    if(f.length>=3&&w.length>=3){const df=avg(f)-avg(w);if(Math.abs(df)>=th)I.push(`${label}: 실패 평균 ${avg(f).toFixed(1)}${unit} / 성공 평균 ${avg(w).toFixed(1)}${unit} → ${df>0?'높을수록':'낮을수록'} 실패가 많습니다.`);}};
+  cmp('rsi','진입 시 RSI(9)','',5);cmp('gap','진입 시 VWAP 이격','ATR',0.4);cmp('om','장 시작 후 진입 시각','분',20);
+  const by=(f,lb)=>{const g={};for(const x of recs){const k=f(x);if(k==null)continue;(g[k]||(g[k]=[0,0]))[0]++;if(x.out)g[k][1]++;}
+    const e=Object.entries(g);if(e.length>1)I.push(`${lb}: `+e.sort((a,b)=>b[1][0]-a[1][0]).map(([k,[t,w]])=>`${k} ${w}/${t}`).join(' · '));};
+  by(x=>x.trig,'트리거별 성공/거래');by(x=>x.kr==null?null:x.kr?'국내':'미국','시장별 성공/거래');
+  $('#btInsights').innerHTML=(I.length?I:[n?'실패 거래의 상세 기록이 아직 없습니다(이전 버전에서 저장된 결과).':'판정된 거래가 생기면 원인을 분석합니다.'])
+    .map(t=>`<li><span class="dim">·</span><span>${esc(t)}</span></li>`).join('');
+  $('#btFails').innerHTML=fails.filter(x=>x.reason).sort((a,b)=>b.t-a.t).slice(0,12).map(x=>
+    `<div><span class="t num">${new Date(x.t+KOFF).toISOString().slice(5,16).replace('T',' ')}</span><span>${esc(nameOf(x.s))}</span>`+
+    `<span class="badge b-sellw">${esc(REASON[x.reason])}</span><span class="sp"></span><span class="num mut">최고 ${pct(x.mfe)} · 최저 ${pct(x.mae)} · ${x.held}봉 · ${esc(x.trig)} · RSI ${x.rsi??'–'}</span></div>`).join('')||'<div class="empty">실패 거래가 없습니다</div>';
+}
+
+// 개선안: 설정 하나씩 바꿔 같은 시세로 엔진을 다시 돌린다. 브라우저가 한가할 때 한 가지씩 계산한다
+// 손절선은 위의 −1~−5% 비교표가 다루므로 여기서는 진입 조건만 바꿔 본다
+const WHATIF=[
+  {label:'RSI 상한 70',ov:{rsiMax:70}},{label:'VWAP 이격 상한 ATR×1.5',ov:{gapMax:1.5}},
+  {label:'개장 후 30분 진입 제외',ov:{openSkip:30}},{label:'기대 변동폭 ≥ 2.5% (비율 1.25)',ov:{expRatio:1.25}},
+  {label:'확인 타점(85점) 돌파에서만 매수',entry:85}];
+let lastWhatIf=0,lastWiN=-1,wiBusy=false,whatIf=null;
+function runWhatIf(base){
+  wiBusy=true;lastWhatIf=Date.now();lastWiN=base.trades.length;
+  const snap={...results},idle=window.requestIdleCallback||setTimeout;
+  const bn=base.trades.length,bw=base.trades.filter(x=>x.out).length,out=[];
+  const vars=WHATIF.filter(v=>!v.ov||Object.keys(v.ov).some(k=>cfg[k]!==v.ov[k]));
+  let j=0;
+  const step=()=>{
+    if(j>=vars.length){whatIf={baseN:bn,baseRate:bn?bw/bn*100:null,rows:out};wiBusy=false;renderWhatIf();return;}
+    const v=vars[j++],P={...cfg,...(v.ov||{})},src={};
+    for(const s in snap){const R=snap[s];src[s]={rows:v.ov?evaluate(R.bars,R.hasVol,P,R.kr,mktBreadth[R.kr?'K':'U']).rows:R.rows,bars:R.bars,kr:R.kr};}
+    const r=simulate(src,{entry:v.entry||BT.entry,target:BT.target,stopPct:cfg.btStop});
+    const n=r.trades.length;out.push({...v,n,rate:n?r.trades.filter(x=>x.out).length/n*100:null});
+    idle(step);
+  };
+  idle(step);
+}
+function renderWhatIf(){
+  const W=whatIf,tb=$('#btWhatIf');
+  if(!W||!W.baseN){tb.innerHTML='<tr><td colspan="5" class="empty">현재 시세에서 판정된 거래가 생기면 계산합니다</td></tr>';return;}
+  const rows=W.rows.filter(v=>v.rate!=null).map(v=>({...v,d:v.rate-W.baseRate})).sort((a,b)=>b.d-a.d);
+  tb.innerHTML=`<tr><td style="text-align:left" class="mut">현재 설정</td><td class="num">${W.baseRate.toFixed(1)}%</td><td></td><td class="num">${W.baseN}</td><td></td></tr>`+
+    rows.map((v,i)=>`<tr><td style="text-align:left">${esc(v.label)}</td><td class="num">${v.rate.toFixed(1)}%</td>`+
+      `<td class="num ${v.d>0?'up':v.d<0?'dn':'mut'}">${v.d>0?'+':''}${v.d.toFixed(1)}%p</td><td class="num">${v.n}${v.n<5?' <span class="dim">적음</span>':''}</td>`+
+      `<td>${v.ov&&v.d>0?`<button data-wi="${WHATIF.indexOf(WHATIF.find(w=>w.label===v.label))}">적용</button>`:''}</td></tr>`).join('')+
+    W.rows.filter(v=>v.rate==null).map(v=>`<tr><td style="text-align:left" class="dim">${esc(v.label)}</td><td class="dim">–</td><td></td><td class="dim">거래 없음</td><td></td></tr>`).join('');
+}
+$('#btWhatIf').onclick=e=>{const b=e.target.closest('[data-wi]');if(!b)return;const v=WHATIF[+b.dataset.wi];
+  setCfg(v.ov);toast(`"${v.label}"을(를) 적용했습니다. 이후 거래부터 반영됩니다.`);};
+
+// ---------- 알림 ----------
+let actx=null;
+function beep(up){try{actx=actx||new AudioContext();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=up?880:440;g.gain.value=0.06;o.connect(g).connect(actx.destination);o.start();o.stop(actx.currentTime+0.18);}catch(e){}}
+function toast(msg){const el=document.createElement('div');el.className='toast';el.textContent=msg;$('#toasts').appendChild(el);setTimeout(()=>el.remove(),3500);}
+// 알림은 매수 타점(1차·확인·매수 구간 진입)만 보낸다. 매도·무효·목표 도달은 신호 기록과 차트에만 남긴다
+const ALERT_MARKS=new Set(['entry','confirm','buyZone']);
+function notify(all){
+  const list=all.filter(x=>ALERT_MARKS.has(x.r.mark));if(!list.length)return;
+  const {s,r}=list[list.length-1],[txt,tone]=MARKS[r.mark];
+  const msg=`${nameOf(s)} ${txt} · ${fmtP(r.c,s)} · 점수 ${r.score}`+(list.length>1?` (외 ${list.length-1}건)`:'');
+  toast(msg);
+  if(cfg.alert){beep(tone.startsWith('buy'));
+    try{if(window.Notification&&Notification.permission==='granted')new Notification('타점 신호',{body:msg});}catch(e){}}
+}
+
+// ---------- 차트 ----------
+let ch=null,cs=null,sc=null,ss=null,lines={},plB=null,plS=null,chartSym=null,chartTf=null;
+function initCharts(){
+  if(!window.LightweightCharts){$('#chart').innerHTML='<div class="chart-msg">차트 라이브러리를 불러오지 못했습니다(인터넷 연결 확인). 점수 계산은 계속됩니다.</div>';return;}
+  const LC=LightweightCharts,base={autoSize:true,layout:{background:{type:'solid',color:'#171a23'},textColor:'#9aa0ac',fontFamily:'Pretendard,Malgun Gothic,sans-serif'},
+    grid:{vertLines:{color:'#20242f'},horzLines:{color:'#20242f'}},rightPriceScale:{borderColor:'#2a2e3a'},
+    timeScale:{borderColor:'#2a2e3a',timeVisible:true,secondsVisible:false},crosshair:{mode:0}};
+  ch=LC.createChart($('#chart'),base);
+  cs=ch.addCandlestickSeries({upColor:'#ef4444',downColor:'#3b82f6',borderUpColor:'#ef4444',borderDownColor:'#3b82f6',wickUpColor:'#ef4444',wickDownColor:'#3b82f6'});
+  const ln=(color,w,style)=>ch.addLineSeries({color,lineWidth:w,lineStyle:style||0,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
+  lines={s5:ln('#f5c518',1),s20:ln('#a78bfa',1),VW:ln('#34d399',2),bbu:ln('#6b7180',1,2),bbl:ln('#6b7180',1,2)};
+  sc=LC.createChart($('#scoreChart'),{...base,rightPriceScale:{borderColor:'#2a2e3a',scaleMargins:{top:0.1,bottom:0.1}},timeScale:{...base.timeScale,visible:false}});
+  ss=sc.addLineSeries({color:'#e6e8ee',lineWidth:2,priceLineVisible:false,autoscaleInfoProvider:()=>({priceRange:{minValue:0,maxValue:100}})});
+  ch.timeScale().subscribeVisibleLogicalRangeChange(r=>{if(r)sc.timeScale().setVisibleLogicalRange(r);});
+}
+const ct=t=>t/1000+KOFF/1000;
+function drawChart(s){
+  if(!ch)return;const R=results[s];if(!R)return;
+  const usd=curOf(s)!=='KRW';
+  cs.applyOptions({priceFormat:{type:'price',precision:usd?2:0,minMove:usd?0.01:1}});
+  cs.setData(R.bars.map(b=>({time:ct(b.t),open:b.o,high:b.h,low:b.l,close:b.c})));
+  for(const k in lines)lines[k].setData(R.bars.map((b,i)=>R.ind[k][i]==null?{time:ct(b.t)}:{time:ct(b.t),value:R.ind[k][i]}));
+  const mk=[];
+  for(const r of R.rows){if(!r.mark||r.live)continue;const tone=MARKS[r.mark][1];
+    if(r.mark==='target')mk.push({time:ct(r.t),position:'aboveBar',color:'#f5c518',shape:'circle',text:'목표'});
+    else if(tone==='buy')mk.push({time:ct(r.t),position:'belowBar',color:'#ef4444',shape:'arrowUp',text:r.mark==='entry'?'1차':r.mark==='confirm'?'확인':'매수'});
+    else mk.push({time:ct(r.t),position:'aboveBar',color:'#3b82f6',shape:'arrowDown',text:r.mark==='invalid'?'무효':'매도'});}
+  cs.setMarkers(mk);
+  ss.setData(R.rows.map(r=>r.score==null?{time:ct(r.t)}:{time:ct(r.t),value:r.score}));
+  if(plB)ss.removePriceLine(plB);if(plS)ss.removePriceLine(plS);
+  plB=ss.createPriceLine({price:cfg.buy,color:'#ef4444',lineStyle:2,lineWidth:1,axisLabelVisible:true});
+  plS=ss.createPriceLine({price:cfg.sell,color:'#3b82f6',lineStyle:2,lineWidth:1,axisLabelVisible:true});
+  if(chartSym!==s||chartTf!==cfg.tf){ch.timeScale().fitContent();chartSym=s;chartTf=cfg.tf;}
+}
+
+// ---------- 렌더 ----------
+function mktState(){
+  const now=Date.now(),d=new Date(now+KOFF),wd=d.getUTCDay(),m=kstHM(now);
+  if(wd===0||wd===6||m<540||m>=930)return 'KRX 장마감';
+  if(m<555)return 'KRX 개장 직후(오프닝레인지)';
+  if(m>=920)return 'KRX 장마감 임박';
+  return 'KRX 정규장';
+}
+function render(){
+  $('#clock').textContent=hms(Date.now())+' (KST)';
+  $('#mkt').textContent=mktState();
+  const st=store.status,bn={set className(v){$('#banner').className=v;},set textContent(v){$('#bannerTxt').textContent=v;}};
+  $('#launchBox').hidden=!(location.protocol==='file:'&&(!store.ok||(st&&st.mode==='local')));
+  if(!store.ok){bn.className='banner err';bn.textContent='분석 서버 연결이 끊겼습니다. run.bat (server.py) 이 실행 중인지 확인하세요. 다시 켜면 자동으로 이어집니다.';}
+  else if(st.mode==='local'){bn.className='banner demo';bn.textContent='브라우저 내장 데모 — 분석 서버가 꺼져 있어 가상 시세로 동작 중입니다(실제 시세 아님). analyzer 폴더의 run.bat 을 실행하면 이 화면이 자동으로 실제 시세로 전환됩니다.';}
+  else if(st.mode==='demo'){bn.className='banner demo';bn.textContent='데모 데이터 — 가격·점수는 화면 시연용 가상 값이며 실제 시세가 아닙니다. 실제 시세는 키를 설정하고 python server.py 로 실행하세요.';}
+  else if(st.error){bn.className='banner err';bn.textContent='토스증권 API 오류: '+st.error+(st.lastOk?' · 마지막 정상 수신 '+hms(st.lastOk):'');}
+  else{bn.className='banner ok';bn.textContent=`실제 데이터 · 토스증권 Open API 현재가 · 관심종목 ${st.symbols.length}개 · ${st.interval}초 간격 · 마지막 갱신 ${st.lastOk?hms(st.lastOk):'대기 중'}`+
+    (st.invalid&&st.invalid.length?` · 토스 미지원으로 제외: ${st.invalid.join(', ')}`:'');}
+  const on=store.ok&&st&&!st.error;
+  $('#dot').className='dot'+(on?' on':'');
+  $('#liveTxt').textContent=!store.ok?'끊김':st.mode==='local'?'내장 데모':st.mode==='demo'?'데모 · '+st.interval+'초':st.error?'오류':'실제 시세 · '+(st.lastOk?hms(st.lastOk):'연결 중');
+  if(!st)return;
+  renderList();renderLog();
+  if(!cfg.sel||!st.symbols.includes(cfg.sel))cfg.sel=st.symbols[0]||null;
+  renderDetail(cfg.sel);
+  renderNews();
+}
+function renderList(){
+  const q=$('#findSym').value.trim().toUpperCase(),mf=$('#mktFilter').value;
+  const list=syms().filter(s=>(mf==='all'||curOf(s)===mf)&&(!q||s.includes(q)||nameOf(s).toUpperCase().includes(q))).sort((a,b)=>((results[b]&&results[b].last&&results[b].last.score)??-1)-((results[a]&&results[a].last&&results[a].last.score)??-1));
+  $('#cnt').textContent=list.length===syms().length?list.length:`${list.length}/${syms().length}`;
+  $('#list').innerHTML=list.map(s=>{
+    const R=results[s],r=R&&R.last,px=r?r.c:null,chg=px!=null&&R.open?(px/R.open-1)*100:null;
+    const [lb,,tone]=labelOf(r,cfg.buy,cfg.sell),sc=r&&r.score;
+    const col=sc==null?'var(--dim)':sc>=cfg.buy?'var(--up)':sc>=50?'var(--upw)':sc<cfg.sell?'var(--dn)':'var(--muted)';
+    const warm=R&&r&&r.score==null?`<div class="dim" style="font-size:11px">${R.bars.length}/${WARM}봉</div>`:'';
+    const pre=r&&r.pre&&r.pre.n>=3?` <span style="color:${r.pre.n>=4?'var(--near)':'var(--watch)'};font-size:11px">${r.pre.n>=4?'임박':'주시'} ${r.pre.n}/5</span>`:'';
+    return `<tr data-s="${esc(s)}" class="${s===cfg.sel?'sel':''}">
+      <td>${esc(nameOf(s))}<span class="code">${esc(s)}</span></td>
+      <td class="num ${chg>0?'up':chg<0?'dn':''}">${fmtP(px,s)}</td>
+      <td class="num ${chg>0?'up':chg<0?'dn':'mut'}">${chg==null?'–':(chg>0?'+':'')+chg.toFixed(2)+'%'}</td>
+      <td class="num"><b style="color:${col}">${sc??'–'}</b>${r&&r.live&&sc!=null?'<span class="dim" style="font-size:10px"> 잠정</span>':''}<div class="bar"><i style="width:${sc??0}%;background:${col}"></i></div></td>
+      <td><span class="badge b-${tone}">${esc(lb)}</span>${pre}${warm}</td>
+      <td><button class="x" data-del="${esc(s)}" title="삭제">×</button></td></tr>`;
+  }).join('')||`<tr><td colspan="6" class="empty">${syms().length?'조건에 맞는 종목이 없습니다':'종목을 추가하세요'}</td></tr>`;
+}
+function renderLog(){
+  const all=[];for(const s of syms()){const R=results[s];if(R)for(const r of R.rows)if(r.mark&&!r.live)all.push({s,r});}
+  all.sort((a,b)=>b.r.t-a.r.t);
+  $('#logCnt').textContent=all.length;
+  $('#log').innerHTML=all.slice(0,100).map(({s,r})=>{const [txt,tone]=MARKS[r.mark];
+    return `<div><span class="t num">${hms(r.t).slice(0,5)}</span><span class="badge b-${tone}">${esc(txt)}</span><span>${esc(nameOf(s))}</span><span class="sp"></span><span class="num mut">${fmtP(r.c,s)} · ${r.score}</span></div>`;}).join('')||'<div class="empty">아직 신호가 없습니다</div>';
+}
+function renderDetail(s){
+  if(!s){$('#dName').textContent='—';return;}
+  const R=results[s],r=R&&R.last;
+  $('#dName').textContent=nameOf(s);$('#dCode').textContent=s+' · '+curOf(s);
+  const chg=r&&R.open?(r.c/R.open-1)*100:null;
+  const dp=$('#dPx');dp.className='px num '+(chg>0?'up':chg<0?'dn':'');
+  dp.textContent=r?fmtP(r.c,s)+(chg!=null?` (${chg>0?'+':''}${chg.toFixed(2)}%)`:''):'';
+  $('#dBars').textContent=R?`${cfg.tf}분봉 ${R.bars.length}개 · 거래량 ${R.hasVol?'있음':'미제공(VWAP→TWAP 대체)'}`:'';
+  drawChart(s);
+  $('#gB').style.left=cfg.buy+'%';$('#gS').style.left=cfg.sell+'%';
+  const [,long,tone]=labelOf(r,cfg.buy,cfg.sell);
+  $('#dScore').textContent=r&&r.score!=null?r.score:'–';
+  $('#gI').style.left=((r&&r.score)??50)+'%';
+  const lb=$('#dLabel');lb.className='badge b-'+tone;lb.textContent=long+(r&&r.live&&r.score!=null?' (진행 중 봉 · 잠정)':'');
+  if(!r||r.score==null){
+    const need=WARM-(R?R.bars.length:0);
+    $('#reasons').innerHTML=`<li><span></span><span>점수 계산에 ${WARM}봉이 필요합니다. ${need>0?`약 ${need*cfg.tf}분 더 수집하면 표시됩니다.`:''}</span></li>`;
+    $('#stages').innerHTML='';$('#pre').innerHTML='';$('#gates').innerHTML='';$('#ind').innerHTML='';$('#risk').innerHTML='';return;
+  }
+  // 셋업 4단계
+  const su=r.setup,ev=r.event;
+  const st=[['1차 타점',su?(su.state==='first'?'act':'past'):''],['확인',su&&su.state==='confirmed'?(su.k>0?'past':'act'):''],
+    [su&&su.state==='confirmed'?`유지 ${su.k}/${cfg.horizon}`:'유지',su&&su.state==='confirmed'&&su.k>0?'act':''],
+    [ev==='invalid'?'무효':ev==='target'?'목표 도달':ev==='expire'?'종료':'무효 | 목표 | 종료',ev==='invalid'?'bad':ev?'act':'']];
+  $('#stages').innerHTML=st.map(([t,c])=>`<div class="${c}">${esc(t)}</div>`).join('');
+  $('#pre').innerHTML=r.pre&&r.pre.n>=3?`<div class="pre"><b>장대양봉 임박 신호: ${r.pre.n>=4?'임박':'주시'}</b> (충족 ${r.pre.n}/5)<br>${r.pre.sat.map(esc).join(' · ')}</div>`:'';
+  $('#reasons').innerHTML=r.reasons.map(([p,t])=>`<li><span class="${p>0?'up':p<0?'dn':'dim'}">${p?(p>0?'+':'')+p:'·'}</span><span>${esc(t)}</span></li>`).join('');
+  $('#gates').innerHTML=r.gates.length?`<div class="note" style="color:var(--muted)">진입 관문 미통과: ${r.gates.map(esc).join(' · ')}</div>`:'';
+  const i=r.ind;
+  $('#ind').innerHTML=[['RSI(9)',i.rsi!=null?i.rsi.toFixed(1):'–'],[R.hasVol?'VWAP':'TWAP(거래량 없음)',fmtP(i.vwap,s)],['VWAP 괴리',`<span class="${i.gap>=0?'up':'dn'}">${(i.gap>=0?'+':'')+(((r.c/i.vwap)-1)*100).toFixed(2)}% (ATR×${i.gap.toFixed(2)})</span>`],
+    ['ATR(14)',fmtP(i.atr,s)+` (${(i.atr/r.c*100).toFixed(2)}%)`],['거래량 배수(3봉 최대)',i.vr!=null?i.vr.toFixed(2)+'x':'미제공'],
+    ['기대 변동폭',`${i.expMove.toFixed(2)}% / 목표 ${cfg.target}%`],['매수 트리거',r.buy?esc(r.buy.type):'없음'],['매도 트리거',r.sell?esc(r.sell.type):'없음']]
+    .map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+  const entry=su?su.entry:r.c,stop=su?su.stop:r.c-i.atr*cfg.stopAtr,tgt=su?su.target:r.c*(1+cfg.target/100),rr=(tgt-entry)/Math.max(1e-9,entry-stop);
+  $('#risk').innerHTML=[[su?`진입가 (${esc(su.type)})`:'기준가(현재가)',fmtP(entry,s)],su?['기준선',fmtP(su.level,s)]:null,
+    ['손절가 (ATR×'+cfg.stopAtr+')',`<span class="dn">${fmtP(stop,s)}</span>`],['목표가 (+'+cfg.target+'%)',`<span class="up">${fmtP(tgt,s)}</span>`],['손익비',`1 : ${rr.toFixed(2)}`]]
+    .filter(Boolean).map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+
+// ---------- 주요뉴스 기반 종목 분석 ----------
+// 2026-11-03 21시경 토스증권 피드 > 뉴스 > 주요뉴스 1~5페이지(노출 순서 그대로). [언론사, 몇 시간 전, 제목]
+const NEWS_SNAP_AT=Date.UTC(2026,10,3,12,10);  // 21:10 KST
+const NEWS_SNAP=[
+['인포스탁데일리',4,'[1103마감체크] 코스피, AI 자금 조달 우려에 3%대 하락... 코스닥도 4%↓'],
+['서울경제',1,'SK하이닉스, 美 첫 낸드 팹 뉴욕주 ‘마시나노센터’ 유력…AI 메모리 새판 짠다'],
+['이데일리',1,'온 세미컨덕터, 실적 예상 상회에 개장전↑…페릭 6억달러에 인수'],
+['한국경제',3,'"너무 비싸게 샀나"…마벨, 루멘텀 인수발표 후 급락'],
+['이데일리',2,'오픈AI, 전 美 육군장관 영입…동맹국 안보 AI 협력 확대'],
+['한국경제',1,'중국이 393톤 쓸어담았다…가격 29% 폭락하자 벌어진 일'],
+['한국경제',1,'디즈니도 수천명 해고…넷플릭스 이어 할리우드 감원 한파'],
+['연합인포맥스',1,'엔비디아, 데이터센터 기업들에 중국 사업 비중 조절 요청'],
+['한국경제',3,"공장 대신 '두뇌 싸움' 올인…삼성·현대차 확 달라졌다"],
+['한국경제',2,'"민주당 압승시 AI주 하락하면 사라"…JP모건, 중간선거 투자전략'],
+['한국경제',3,'광통신 부품사 패브리넷, 인프라 투자 힘입어 급등'],
+['서울경제',2,'“납땜 녹여 메모리만 화웨이로”…‘삼전닉스 HBM’ 빼돌리는 밀수성행'],
+['파이낸셜뉴스',2,'삼전닉스 D램 잘나가자…슈퍼 乙도 채용 늘렸다'],
+['아주경제',4,'中, 위안화 강세 제동...외화 지준율 4→6% 인상'],
+['한국경제',3,'호실적 낸 팰런티어 차익실현 매물에 뚝'],
+['파이낸셜뉴스',3,'연기금 1조·하닉 20조 ‘사자’에도 코스피 반등 불발'],
+['파이낸셜뉴스',3,'美중간선거가 코스피 살릴까… S&P500은 ‘17전 17승’'],
+['이투데이',4,'[채권마감] 10년~30년물 금리 6개월만 최저, 안전선호+입찰호조+외인 10선 매수'],
+['파이낸셜뉴스',3,"빚내거나 손잡거나 도태되거나... AI 패권, 이젠 '돈줄 확보' 전쟁"],
+['서울경제',3,'알테오젠 분기 매출 첫 1000억 돌파…“자체 생산역량·차세대 플랫폼 강화”'],
+['연합인포맥스',4,'마벨, 루멘텀 인수 효과적이라 하기 어려워 - BofA'],
+['뉴스1',4,"외국인 3거래일간 3.5조 '팔자'…美 중간선거 후 수급 반전 주목"],
+['한국경제',3,'"비싸게 팔면 뭐하나"…아이폰 잘 나가도 애플 속 타는 이유'],
+['뉴스핌',5,"'삼전닉스' 팔아치우는 개미들…美 기술주 실적 발표 후 돌아올까"],
+['아주경제',3,'삼성은 기술 확보, SK는 공급망 선점…엇갈린 日 반도체 공략법'],
+['매일경제',4,'원화값 강세 주춤하자 달러 ETF 회복세'],
+['블루밍비트',1,'월가, 美 중간선거 결과 주시…"민주당 압승 시 증시 변동성 확대"'],
+['인포스탁데일리',4,'美 중간선거 D-day… 증시 반등 기대에도 유가·금리 변수'],
+['토큰포스트',3,'브룩필드, 발전소 부지에 270억달러 AI 데이터센터 추진'],
+['뉴스1',6,'애플, 아이폰 덜 팔고도 매출 신기록 …고가·고마진 전략 통했다'],
+['코인리더스',4,'AI 반도체 대장주, 바닥 멀었다?..."25~35%는 더 빠져야 돼"'],
+['한국경제',3,"AI가 신입 업무 대체…日기업들, 대학 간판보다 '일머리'에 더 큰 보상"],
+['한국경제',6,'中 증시 10년 만의 폭락…정부 당국, 잇따라 부양책 꺼내들어'],
+['블루밍비트',8,'국제 금값, 美·이란 종전 협상 기대에 반등 후 보합…온스당 3950달러선'],
+['한국경제',7,"동물병원 방문 줄어도 검사는 늘었다…주가도 22% '껑충'"],
+['아주경제',7,'알테오젠, 3분기 매출 1000억 돌파… 역대 최대 실적'],
+['이투데이',3,'韓 기업 투자·생산 거점도 선거?주지사 판세에 촉각'],
+['이데일리',4,"‘따따블’ 찍고도 공모가 아래로…AI 새내기주, 투자심리 ‘싸늘’"],
+['헤럴드경제',7,'“이란 전쟁비용은 푼돈”…트럼프, 중간선거 전날 전쟁 정당성 강조'],
+['뉴스핌',5,'[ETF 시황] 반도체·2차전지 ETF 동반 급락…인버스는 10%↑'],
+['서울경제',6,'금융권 해킹에 보안주 급등…한싹 상한가·파수AI 15%대↑'],
+['연합인포맥스',8,'트럼프, 중간선거 하루 앞두고 기념관 정비 성과 강조'],
+['뉴스1',7,"트럼프 \"합의 없으면 이란 '곡괭이산' 공격해야 할 수도 있어\""],
+['파이낸셜뉴스',10,'ESS 성장 기대감에…KODEX 전고체배터리ESS 순자산 3000억 돌파'],
+['뉴스1',9,'엘앤에프, LG엔솔과 첫 LFP 양극재 공급 계약…1조 350억 규모'],
+['동행미디어시대',9,'LG엔솔, ESS 호조에 3분기 영업익 7560억원'],
+['아시아경제',10,'선거 이후 더 거센 패권주의 온다…韓 산업계 긴장'],
+['파이낸셜뉴스',11,'대우건설, 정비사업 누적 수주 5조 돌파...목동 8단지 등 추가 수주 예고']];
+// 11/3 마감 시 토스 종목 화면에서 확인한 값(스냅샷일 때만 표시)
+const SNAP_CLOSE={'196170':'+1.17% · 체결강도 127% · 외국인 +3.9만 주 · 종가 위치 0.60',
+  '066970':'−2.59% (장중 +4.5% 후 밀림) · 체결강도 70% · 외국인·기관 동반 매도',
+  '150900':'+17.56% (장중 상한가 근처 후 밀림) · 체결강도 66%','047040':'−7.61% · 체결강도 115% · 외국인 +162만 주',
+  '373220':'−3.65% · 체결강도 87%'};
+// 종목 사전: [코드, 표시명, 헤드라인에서 찾을 이름들]. 코드를 모르는 종목은 null(관심종목 추가 불가)
+const STOCK_DICT=[
+['196170','알테오젠',['알테오젠']],['066970','엘앤에프',['엘앤에프']],['373220','LG에너지솔루션',['LG에너지솔루션','LG엔솔']],
+['047040','대우건설',['대우건설']],['150900','파수AI',['파수AI','파수']],[null,'한싹',['한싹']],
+['000660','SK하이닉스',['SK하이닉스','하이닉스','하닉','삼전닉스']],['005930','삼성전자',['삼성전자','삼전닉스','삼성·']],
+['005380','현대차',['현대차']],['035420','NAVER',['NAVER','네이버']],['035720','카카오',['카카오']],
+['AAPL','Apple',['애플','아이폰']],['NVDA','NVIDIA',['엔비디아']],['MSFT','Microsoft',['마이크로소프트']],['TSLA','Tesla',['테슬라']],
+['PLTR','팰런티어',['팰런티어']],['MRVL','마벨',['마벨']],['LITE','루멘텀',['루멘텀']],['ON','온 세미컨덕터',['온 세미컨덕터','온세미']],
+['FN','패브리넷',['패브리넷']],['DIS','디즈니',['디즈니']],['NFLX','넷플릭스',['넷플릭스']],['INTC','인텔',['인텔']],
+['042700','한미반도체',['한미반도체']],['003490','대한항공',['대한항공']],['007660','이수페타시스',['이수페타시스']],['028300','HLB',['HLB']],
+['AMD','AMD',['AMD','리사 수']],['SMCI','슈퍼마이크로',['슈퍼마이크로','슈퍼 마이크로']],['ANET','아리스타',['아리스타']],
+['CRWD','크라우드스트라이크',['크라우드스트라이크']],['META','메타',['메타,','메타 ']],['SHOP','쇼피파이',['쇼피파이']],['PFE','화이자',['화이자']],
+// 나스닥100 51~100위(11/4 추가)
+['INTU','인튜이트',['인튜이트']],['MRNA','모더나',['모더나']],['SNPS','시놉시스',['시놉시스']],['CDNS','케이던스',['케이던스']],['CEG','컨스텔레이션 에너지',['컨스텔레이션']],
+['MELI','메르카도리브레',['메르카도']],['CMCSA','컴캐스트',['컴캐스트']],['APP','앱러빈',['앱러빈']],['DASH','도어대시',['도어대시']],['HON','허니웰',['허니웰']],
+['NXPI','NXP',['NXP']],['DDOG','데이터독',['데이터독']],['MSTR','스트래티지',['스트래티지','마이크로스트래티지']],['ADSK','오토데스크',['오토데스크']],
+['PYPL','페이팔',['페이팔']],['WDAY','워크데이',['워크데이']],['MCHP','마이크로칩',['마이크로칩']],['TER','테라다인',['테라다인']],['NBIS','네비우스',['네비우스']],
+['ALAB','아스테라 랩스',['아스테라']],['TTWO','테이크투',['테이크투','GTA']],['RKLB','로켓랩',['로켓랩']],['AXON','액손',['액손']],['DXCM','덱스콤',['덱스콤']],
+['CRWV','코어위브',['코어위브']],['ALNY','앨나일람',['앨나일람']],['MPWR','모놀리식 파워',['모놀리식']],['IDXX','아이덱스',['아이덱스']]];
+const MARKET_RE=/코스피|코스닥|증시|외국인|기관|연기금|금리|채권|환율|원화|달러(화| 강세| 약세| ETF| 인덱스)|유가|금값|중간선거|FOMC|연준|ETF|S&P|나스닥|위안화|AI주|반도체 대장주|AI 패권|물가|종전|선거|트럼프|뉴욕증시|반도체주/;
+// 재료 강도 규칙(위에서부터 모두 적용). 명세 4.11 긍정/부정어는 아래에서 ±1씩 더한다
+const NEWS_RULES=[
+  [/(공급|수주|계약).*\d.*(조|억)|\d.*(조|억).*(공급|수주|계약)/,4,'대형 계약·수주'],
+  [/(사상|역대|분기) 최대 (실적|매출|이익|영업익)|(매출|영업익|이익|실적).*(사상|역대|분기) 최대|최대 실적|신기록|첫 .*돌파|매출 .*돌파/,4,'최대 실적'],
+  [/예상 상회|예상치 상회|호실적|실적 개선|흑자 전환|영업익/,2,'실적 호조'],
+  [/상한가|급등|껑충|따따블|\d+%대?↑|개장전↑/,2,'급등 재료'],
+  [/목표가.*상향|매수.*유지|투자의견 상향/,2,'증권가 상향'],
+  [/급락|폭락|뚝|↓|싸늘|차익실현/,-3,'급락·약세'],
+  [/하향|하회|우려|해고|감원|밀수|소송|리콜|적자|부진|팔자|팔아치우|빠져야/,-2,'악재']];
+const POS_WORDS=['상승','급등','호재','흑자','개선','수주','신고가','순매수','기대','성장','호실적','사상최대','배당','자사주매입','자사주 매입','협력','승인','수출 호조','실적 개선'];
+const NEG_WORDS=['하락','급락','악재','적자','부진','소송','리콜','신저가','순매도','우려','감소','부도','규제','제재','조사','경고','하향','감원','구조조정'];
+
+function parseNews(text){
+  const L=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),out=[],seenT=new Set();
+  for(let i=0;i<L.length;i++){
+    const m=L[i].match(/^(.+?)\s*[・·]\s*(\d+)\s*(분|시간|일)\s*전$/);
+    if(!m||!L[i+1])continue;
+    const n=+m[2],h=m[3]==='분'?n/60:m[3]==='시간'?n:n*24,title=L[i+1],rel=[];
+    let j=i+2;
+    for(;j<L.length;j++){const r=L[j].match(/^(.+?)\s([+\-−]?\d+(?:\.\d+)?)%$/);if(!r)break;rel.push({name:r[1],chg:parseFloat(r[2].replace('−','-'))});}
+    if(!seenT.has(title)){seenT.add(title);out.push({press:m[1],h,title,rel});}
+    i=j-1;
+  }
+  return out;
+}
+function scoreHeadline(t){
+  let s=0;const tags=[];
+  for(const [re,p,tag] of NEWS_RULES)if(re.test(t)){s+=p;tags.push(tag);}
+  for(const w of POS_WORDS)if(t.includes(w))s+=1;
+  for(const w of NEG_WORDS)if(t.includes(w))s-=1;
+  return {s:Math.max(-6,Math.min(6,s)),tags};
+}
+function analyzeNews(items,at){
+  const age=(Date.now()-at)/3600e3,N=items.length,heads=[],stocks={};
+  let mkt=0,mktN=0;
+  items.forEach((it,idx)=>{
+    const {s,tags}=scoreHeadline(it.title),h=it.h+Math.max(0,age);
+    // 최신성(24시간에 절반) × 토스 노출 순서(마지막이 0.75). 뒤 페이지일수록 오래된 기사라 순서 가중치는 약하게 둔다
+    const w=(1/(1+h/24))*(1-idx/(4*Math.max(1,N)));
+    const hits=STOCK_DICT.filter(([,,al])=>al.some(a=>it.title.includes(a)));
+    for(const r of it.rel)if(!hits.some(d=>d[1]===r.name)){const d=STOCK_DICT.find(([,nm,al])=>nm===r.name||al.includes(r.name));hits.push(d||[null,r.name,[r.name]]);}
+    const market=!hits.length&&MARKET_RE.test(it.title);
+    if(market){mkt+=s*w;mktN+=w;}
+    heads.push({...it,s,tags,w,imp:(Math.abs(s)+1)*w*(hits.length?1.2:market?1.3:1),hits,market});
+    for(const d of hits){const k=d[0]||d[1];const st=stocks[k]||(stocks[k]={code:d[0],name:d[1],score:0,n:0,best:null});
+      st.score+=s*w;st.n++;if(!st.best||Math.abs(s*w)>Math.abs(st.best.s*st.best.w))st.best={title:it.title,s,w,tags};}
+  });
+  heads.sort((a,b)=>b.imp-a.imp);
+  return {heads,stocks:Object.values(stocks),mkt:mktN?mkt/mktN:0};
+}
+let newsSrc={snap:true,at:NEWS_SNAP_AT,items:NEWS_SNAP.map(([press,h,title])=>({press,h,title,rel:[]}))};
+try{const sv=JSON.parse(localStorage.getItem('toss-news')||'null');if(sv&&sv.items&&sv.items.length)newsSrc={snap:false,...sv};}catch(e){}
+function renderNews(){
+  const A=analyzeNews(newsSrc.items,newsSrc.at);
+  $('#newsMeta').textContent=`${newsSrc.snap?'11/3 스냅샷':newsSrc.auto?'자동 분석':'붙여넣은 뉴스'} ${newsSrc.items.length}건 · 수집 ${new Date(newsSrc.at+KOFF).toISOString().slice(5,16).replace('T',' ')} KST`;
+  const closeMap=newsSrc.snap?SNAP_CLOSE:(newsSrc.close||{}),closeLb=newsSrc.snap?'11/3 마감':'확인 시세';
+  // 시장 분위기 = 뉴스 점수 + 매크로 영향 점수×0.3 (매크로 −5~+5 → −1.5~+1.5)
+  const ME=macroEval(),mScore=ME&&ME.n?ME.total*0.3:0,mood=A.mkt+mScore;
+  const tone=mood>0.5?['우호','up']:mood<-0.5?['위험 회피','dn']:['혼조','mut'];
+  const mh=A.heads.filter(h=>h.market).slice(0,3);
+  const mcLine=ME&&ME.n?` · 뉴스 ${A.mkt.toFixed(2)} + 매크로 ${ME.total>0?'+':''}${ME.total}(${ME.rows.filter(r=>r.eff).map(r=>`${r.name} ${r.eff>0?'우호':'악영향'}`).join(', ')||'모두 중립'})`:'';
+  $('#newsMarket').innerHTML=`<b>시장 분위기: <span class="${tone[1]}">${tone[0]}</span></b> <span class="mut num">(${mood.toFixed(2)}${esc(mcLine)})</span><br>`+
+    mh.map(h=>`<span class="${h.s>0?'up':h.s<0?'dn':'mut'}">${h.s>0?'+':''}${h.s}</span> ${esc(h.title)}`).join('<br>')+
+    (tone[0]==='위험 회피'?'<br><span class="mut">시장 전체가 약할 때는 개별 호재도 지수에 끌려 내려가기 쉽습니다. 실시간 타점(돌파 확인) 전 선진입은 피하는 편이 안전합니다.</span>':'');
+  const live=s=>{const R=results[s],r=R&&R.last;return r&&r.score!=null?r:null;};
+  const rows=A.stocks.filter(x=>x.score>0).map(x=>{
+    const r=x.code&&syms().includes(x.code)?live(x.code):null;
+    const comp=x.score*8+(r?(r.score-50)*0.6:0);
+    let judge,tone;
+    if(!x.code){judge='종목 코드 미등록 — 직접 확인';tone='neu';}
+    else if(!syms().includes(x.code)){judge='관심종목에 추가하면 실시간 타점 확인';tone='neu';}
+    else if(!r){judge='뉴스 호재 · 시세 축적 중';tone='neu';}
+    else if(r.score>=cfg.buy){judge='뉴스 호재 + 매수 타점 발생';tone='buy';}
+    else if(r.score>=65){judge='뉴스 호재 + 매수 대기';tone='buyw';}
+    else if(r.score<cfg.sell){judge='호재에도 차트 약세 — 보류';tone='sell';}
+    else{judge='뉴스 호재 · 돌파 트리거 대기';tone='neu';}
+    if(ME&&ME.n&&ME.total<=-2&&(tone==='buy'||tone==='buyw'))judge+=' · 매크로 역풍 주의';
+    return {...x,r,comp,judge,tone};
+  }).sort((a,b)=>b.comp-a.comp);
+  $('#newsRank').innerHTML=rows.map((x,i)=>{
+    const [lb,,lt]=x.r?labelOf(x.r,cfg.buy,cfg.sell):['–','','neu'];
+    const add=x.code&&!syms().includes(x.code)?`<button data-addnews="${esc(x.code)}">+ 추가</button>`:'';
+    const snap=closeMap[x.code]?`<div class="dim" style="font-size:11px">${closeLb}: ${esc(closeMap[x.code])}</div>`:'';
+    return `<tr${x.code&&syms().includes(x.code)?` data-s="${esc(x.code)}"`:''}><td class="num">${i+1}</td>
+      <td style="text-align:left">${esc(x.name)}<span class="code">${esc(x.code||'코드 없음')}</span></td>
+      <td class="num up">+${x.score.toFixed(1)}<div class="dim" style="font-size:11px">${x.n}건</div></td>
+      <td style="text-align:left;white-space:normal;min-width:220px">${esc(x.best.title)}<div class="dim" style="font-size:11px">${esc(x.best.tags.join(' · ')||'긍정어')}</div>${snap}</td>
+      <td class="num">${x.r?`<b>${x.r.score}</b> <span class="badge b-${lt}">${esc(lb)}</span>`:'–'}</td>
+      <td style="text-align:left"><span class="badge b-${x.tone}">${esc(x.judge)}</span></td><td>${add}</td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">호재로 분류된 종목 뉴스가 없습니다</td></tr>';
+  const rp=newsSrc.auto&&newsSrc.report;
+  $('#newsSnap').innerHTML=(rp?`<div class="pre" style="margin-top:10px"><b>자동 분석 요약</b> <span class="mut">(${new Date((rp.at||newsSrc.at)+KOFF).toISOString().slice(5,16).replace('T',' ')} KST)</span><br>${esc(rp.summary||'')}`+
+    (Array.isArray(rp.picks)&&rp.picks.length?'<br>'+rp.picks.map((p,i)=>`<b>${i+1}. ${esc(p.name||'')}</b> <span class="code">${esc(p.code||'')}</span> — ${esc(p.reason||'')}`).join('<br>'):'')+
+    (rp.caution?`<br><span class="mut">${esc(rp.caution)}</span>`:'')+'</div>':'')+(rows.length?`<div class="note">1위 <b>${esc(rows[0].name)}</b>: 뉴스 점수와 실시간 타점을 합친 순위상 조건이 가장 많이 맞는 종목입니다. 장중에는 "실시간 타점"이 매수 타점(${cfg.buy}점 이상)으로 바뀌는지 확인하세요.</div>`:'');
+  newsHeads=A.heads;renderNewsList();
+}
+// 우측 하단: 수집한 주요뉴스 전체를 중요도 순으로 펼쳐 보여 준다
+let newsHeads=[];
+function renderNewsList(){
+  const f=$('#nlFilter').value||'all',age=Math.max(0,(Date.now()-newsSrc.at)/3600e3);
+  const top=newsHeads.length?newsHeads[0].imp:1;
+  const ago=h=>h<1?`${Math.max(1,Math.round(h*60))}분 전`:h<48?`${Math.round(h)}시간 전`:`${Math.round(h/24)}일 전`;
+  const list=newsHeads.map((h,i)=>({...h,rank:i+1})).filter(h=>f==='all'||(f==='market'?h.market:f==='stock'?h.hits.length:f==='pos'?h.s>0:h.s<0));
+  $('#nlCnt').textContent=list.length;
+  $('#nlMeta').textContent=`수집 ${new Date(newsSrc.at+KOFF).toISOString().slice(5,16).replace('T',' ')} KST${newsSrc.auto?' · 자동 갱신':''}`;
+  $('#newsList').innerHTML=list.map(h=>{
+    const c=h.s>0?'up':h.s<0?'dn':'mut',pct=Math.round(100*h.imp/top);
+    const tags=(h.market?'<span class="tg mk">시장 전체</span>':'')+h.hits.map(d=>`<span class="tg">${esc(d[1])}</span>`).join('')+
+      h.tags.map(t=>`<span class="tg">${esc(t)}</span>`).join('');
+    const rel=h.rel&&h.rel.length?' · '+h.rel.map(r=>`${esc(r.name)} <span class="${r.chg>0?'up':r.chg<0?'dn':''}">${r.chg>0?'+':''}${r.chg}%</span>`).join(', '):'';
+    return `<div><span class="rk num">${h.rank}</span><span class="im num ${c}">${h.s>0?'+':''}${h.s}<i style="width:${Math.max(8,pct)}%"></i></span>
+      <div><div class="tt">${esc(h.title)}</div><div class="mt">${esc(h.press)} · ${ago(h.h+age)}${rel}</div>${tags?`<div style="margin-top:3px">${tags}</div>`:''}</div></div>`;
+  }).join('')||'<div class="empty" style="display:block">해당하는 뉴스가 없습니다</div>';
+}
+$('#nlFilter').onchange=renderNewsList;
+$('#newsApply').onclick=()=>{
+  const items=parseNews($('#newsInput').value);
+  if(!items.length)return toast('뉴스를 찾지 못했습니다. 토스 주요뉴스 화면 전체를 복사해 붙여 넣으세요.');
+  // 이전에 붙여 넣은 뉴스는 지난 시간만큼 "N시간 전"을 늘려 새 기준 시각에 맞춘다
+  const gap=(Date.now()-newsSrc.at)/3600e3,prev=newsSrc.snap?[]:newsSrc.items.map(x=>({...x,h:x.h+gap})),merged=[...prev];
+  for(const it of items)if(!merged.some(x=>x.title===it.title))merged.push(it);
+  newsSrc={snap:false,at:Date.now(),items:prev.length?merged:items};
+  try{localStorage.setItem('toss-news',JSON.stringify(newsSrc));}catch(e){}
+  $('#newsInput').value='';toast(`뉴스 ${items.length}건을 분석했습니다`);renderNews();
+};
+$('#newsReset').onclick=()=>{try{localStorage.removeItem('toss-news');}catch(e){}
+  newsSrc={snap:true,at:NEWS_SNAP_AT,items:NEWS_SNAP.map(([press,h,title])=>({press,h,title,rel:[]}))};renderNews();};
+$('#newsRank').onclick=e=>{const b=e.target.closest('[data-addnews]');if(b){setSymbols([...syms(),b.dataset.addnews]);return;}
+  const tr=e.target.closest('tr[data-s]');if(tr){cfg.sel=tr.dataset.s;saveCfg();render();}};
+
+// ---------- 이벤트 ----------
+async function setSymbols(list){
+  if(local){
+    list=[...new Set(list.map(s=>s.toUpperCase()).filter(s=>/^[A-Z0-9.\-]{1,12}$/.test(s)))].slice(0,20);
+    if(!list.length)return toast('종목이 비어 있습니다');
+    for(const s of list)if(!store.ticks[s])seedLocal(s);
+    store.status.symbols=list;recompute();render();return;
+  }
+  try{const r=await fetch(API+'/api/symbols',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbols:list})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error);store.status.symbols=d.symbols;recompute();render();}catch(e){toast('종목 변경 실패: '+e.message);}
+}
+$('#addBtn').onclick=()=>{const add=$('#addSym').value.split(/[\s,]+/).map(x=>x.trim().toUpperCase()).filter(Boolean);if(!add.length||!store.status)return;
+  $('#addSym').value='';setSymbols([...syms(),...add.filter(x=>!syms().includes(x))]);};
+$('#launchBtn').onclick=()=>{launchServer();toast('분석 서버를 켜는 중입니다. 브라우저가 묻으면 "열기"를 누르세요.');};
+$('#findSym').oninput=$('#mktFilter').onchange=()=>renderList();
+$('#addSym').onkeydown=e=>{if(e.key==='Enter')$('#addBtn').click();};
+$('#list').onclick=e=>{const del=e.target.closest('[data-del]');if(del){e.stopPropagation();setSymbols(syms().filter(x=>x!==del.dataset.del));return;}
+  const tr=e.target.closest('tr[data-s]');if(tr){cfg.sel=tr.dataset.s;saveCfg();render();}};
+const CFG_KEYS=['tf','buy','sell','target','stopAtr','horizon','rsiMax','gapMax','openSkip','expRatio','breadthMin'];
+for(const k of CFG_KEYS){const el=$('#'+k);el.value=cfg[k];
+  el.onchange=()=>{const v=Number(el.value);if(!isFinite(v)||v<0||(v===0&&k!=='openSkip'&&k!=='breadthMin')){el.value=cfg[k];return;}setCfg({[k]:v});};}
+function setCfg(ch){
+  Object.assign(cfg,ch);for(const k of CFG_KEYS)$('#'+k).value=cfg[k];
+  saveCfg();primed=false;lastWhatIf=0;recompute();render();(window.requestIdleCallback||setTimeout)(backtest);
+}
+cfg.target=2;$('#target').value=2;$('#target').disabled=true;$('#target').title='목표 %는 2%로 고정';
+$('#cfgOpt').onclick=()=>{setCfg({...OPT});toast('최적화 기본값으로 되돌렸습니다');};
+$('#alert').checked=!!cfg.alert;
+$('#alert').onchange=e=>{cfg.alert=e.target.checked;saveCfg();if(cfg.alert&&window.Notification&&Notification.permission==='default')Notification.requestPermission();};
+setInterval(()=>{$('#clock').textContent=hms(Date.now())+' (KST)';},1000);
+initCharts();poll();
+</script>
+</body>
+</html>
